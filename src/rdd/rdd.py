@@ -1,5 +1,6 @@
-import partition
 import re
+
+from src.rdd import partition
 
 
 class RDD(object):
@@ -296,13 +297,13 @@ class ReduceByKey(RDD):
 
 if __name__ == '__main__':
 
-    partitions = partition.FilePartition(['wordcount'],1).partition().get('wordcount')
+    partitions = partition.FilePartition(['../../files/wordcount'],1).partition().get('wordcount')
     for p in partitions:
         # r = TextFile('myfile',partitions.get(p))
         # m = Map(r, lambda s: s.split())
         # f = Filter(m, lambda a: int(a[1]) > 2)
         # print f.collect()
-        lines = TextFile('wordcount',partitions.get(p), 1)
+        lines = TextFile('../../files/wordcount',partitions.get(p), 1)
         f = FlatMap(lines,lambda x: x.split(' '))
         m = Map(f,lambda x: (x, 1))
         counts = ReduceByKey(m,lambda a, b: a+b)

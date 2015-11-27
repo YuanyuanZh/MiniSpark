@@ -1,10 +1,9 @@
-import pickle
 import StringIO
 
 import zerorpc
-import cloudpickle
 
-from rdd import *
+import cloudpickle
+from src.rdd.rdd import *
 
 r = TextFile('myfile')
 m = Map(r, lambda s: s.split())

@@ -1,11 +1,10 @@
 import StringIO
 import pickle
 
-import cloudpickle
-import gevent
 import zerorpc
 
-import rdd
+import gevent
+
 
 class Worker(object):
 
