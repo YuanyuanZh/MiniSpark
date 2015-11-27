@@ -18,9 +18,9 @@ class RangePartition(Partition):
 
 class FilePartition(Partition):
 
-    def __init__(self,files,num_workers):
+    def __init__(self,files,num_partition):
         self.files = files
-        self.num_workers = num_workers
+        self.num_partition = num_partition
 
     def partition(self):
         rst = {}
@@ -29,8 +29,8 @@ class FilePartition(Partition):
             file_object.seek(0,2)
             end = file_object.tell()
             sub_rst = {}
-            partitions = 2*self.num_workers
-            partition_size = end / partitions
+            # partitions = 2*self.num_workers
+            partition_size = end / self.num_partition
             offset = 0
             partition_id = 0
             while offset < end:
