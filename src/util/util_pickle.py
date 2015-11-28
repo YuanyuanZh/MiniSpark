@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-
 from cloudpickle import *
+import StringIO
 
 
 def pickle_object(input):

@@ -9,3 +9,6 @@ from enum import Enum
 
 # Event enum variable
 Event = Enum('REGISTER', 'NEWJOB', 'FINISHTASK', 'WORKERDOWN', 'FINISHJOB')
+
+# Task status enum variable
+Status = Enum('START', 'PROCESSING', 'FINISH', 'FAIL')
