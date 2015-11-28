@@ -1,12 +1,8 @@
-import re
-
-
 class RDD(object):
     default = {}
     default['num_partition_RBK'] = 2
+    default['num_partition_GBK'] = 2
     current_id = 0
-    narrow = ['Map','FlatMap','Filter']
-    wide = ['ReduceByKey','GroupByKey']
 
     def __init__(self,config = default):
         self.lineage = None
@@ -22,13 +18,13 @@ class RDD(object):
         pass
 
     def collect(self):
-        elements = []
-        while True:
-            element = self.get()
-            if element == None:
-                break
-            elements.append(element)
-        return elements
+        # elements = []
+        # while True:
+        element = self.get()
+        if element == None:
+            return None
+        # elements.append(element)
+        return element
 
     def count(self):
         return len(self.collect())
@@ -54,8 +50,8 @@ class NarrowRDD(RDD):
     def partitions(self):
         partitions = self.parent.partitions()
         index = self.lineage.index((self,self.id))
-        next_op = self.lineage[index+1]
         if index+1 < len(self.lineage):
+            next_op = self.lineage[index+1]
             if isinstance(next_op[0], WideRDD):
                 new_partitions = []
                 for i in range(self.num_partitions):
@@ -68,10 +64,28 @@ class NarrowRDD(RDD):
 
 
 class WideRDD(RDD):
-    def __int__(self,parent):
+    def __int__(self):
         super(WideRDD,self).__init__()
-        self.parent = parent
+        # self.parent = parent
 
+    def partitions(self):
+        partitions = []
+        index = self.lineage.index((self,self.id))
+        if index+1 < len(self.lineage):
+            next_op = self.lineage[index+1]
+            if isinstance(next_op[0], WideRDD):
+                for i in range(self.num_partitions):
+                    sub = []
+                    for j in range(next_op[0].num_partitions):
+                        sub.append(str(i)+str(j))
+                    partitions.append(sub)
+            else:
+                for i in range(self.num_partitions):
+                    partitions.append([str(i)])
+        else:
+            for i in range(self.num_partitions):
+                partitions.append([str(i)])
+        return partitions
 
 class TextFile(RDD):
 
@@ -93,7 +107,7 @@ class TextFile(RDD):
         partitions = []
         index = self.lineage.index((self,self.id))
         next_op = self.lineage[index+1]
-        if isinstance(next_op[0], WideRDD):
+        if isinstance(next_op[0], NarrowRDD):
             for i in range(self.num_partitions):
                 partitions.append([str(i)])
         else:
@@ -109,13 +123,13 @@ class TextFile(RDD):
             f = open(self.filename)
             self.lines = self.read_file(f)
             f.close()
-        # return self.lines
-        if self.index == len(self.lines):
-            return None
-        else:
-            line = self.lines[self.index]
-            self.index += 1
-            return line
+        return self.lines
+        # if self.index == len(self.lines):
+        #     return None
+        # else:
+        #     line = self.lines[self.index]
+        #     self.index += 1
+        #     return line
 
     def read_file(self, f):
         f.seek(0, 2)
@@ -154,7 +168,7 @@ class Map(NarrowRDD):
         else:
             element_new = []
             for e in element:
-                element_new.append(self.func(re.sub(r'\n', "", e)))
+                element_new.append(self.func(e))
             return element_new
 
 
@@ -193,38 +207,71 @@ class FlatMap(NarrowRDD):
         if element == None:
             return None
         else:
-            new_element = self.func(element)
-            rst = []
-            for e in new_element:
-                rst.append(e)
-            return rst
+            new_element = []
+            for e in element:
+                rst = self.func(e)
+                new_element += rst
+            return new_element
 
 
 class Join(RDD):
     def __init__(self, parent):
         super(Join,self).__init__()
         self.parent = parent
+        self.id = "Join_{0}".format(Join.current_id)
+        Join.current_id += 1
+        self.num_partitions = 1
+
+    def get_lineage(self):
+        lineage = []
+        for p in self.parent:
+            lineage.append(p.get_lineage())
+        lineage.append((self,self.id))
+        return lineage
+
+    def get(self):
+        element1 = self.parent[0].get()
+        element2 = self.parent[1].get()
+        if element1 == None or element2 == None:
+            return None
+        else:
+            rst = []
+            for i in range(len(element1)):
+                rst.append((element1[i][0],(element1[i][1],element2[i][1])))
+            return rst
 
 
-class MapValue(RDD):
+class MapValue(NarrowRDD):
     def __init__(self, parent,func):
         super(MapValue,self).__init__()
         self.parent = parent
         self.func = func
+        self.id = "MapValue_{0}".format(MapValue.current_id)
+        MapValue.current_id += 1
 
+    def get(self):
+        element = self.parent.get()
+        if element == None:
+            return None
+        else:
+            rst = []
+            for e in element:
+                rst.append((e[0],self.func(e[1])))
+            return rst
 
-class GroupByKey(RDD):
+class GroupByKey(WideRDD):
 
     def __init__(self, parent):
         super(GroupByKey,self).__init__()
         self.parent = parent
         self.id = "GroupByKey_{0}".format(GroupByKey.current_id)
         GroupByKey.current_id += 1
-        self.num_partitions = 0
+        self.num_partitions = self.config['num_partition_GBK']
 
     def get_lineage(self):
         lineage = self.parent.get_lineage()
         lineage.append((self,self.id))
+        self.lineage = lineage
         return lineage
 
     def get(self):
@@ -233,14 +280,17 @@ class GroupByKey(RDD):
             return None
         else:
             element_new = {}
-            for k in element.keys():
-                v = element[k]
+            for e in element:
+                k = e[0]
+                v = e[1]
                 if k in element_new:
                     element_new[k].append(v)
                 else:
                     element_new[k] = [v]
-            return element_new
-
+            rst = []
+            for key in element_new.keys():
+                rst.append((key,element_new.get(key)))
+            return rst
 
 class ReduceByKey(WideRDD):
 
@@ -258,39 +308,21 @@ class ReduceByKey(WideRDD):
         self.lineage = lineage
         return lineage
 
-    def partitions(self):
-        partitions = []
-        index = self.lineage.index((self,self.id))
-        if index+1 < len(self.lineage):
-            next_op = self.lineage[index+1]
-            if isinstance(next_op[0], WideRDD):
-                for i in range(self.num_partitions):
-                    sub = []
-                    for j in range(next_op[0].num_partitions):
-                        sub.append(str(i)+str(j))
-                    partitions.append(sub)
-        else:
-            for i in range(self.num_partitions):
-                partitions.append([str(i)])
-        return partitions
-
     def get(self):
         collect = {}
         element = self.parent.get()
         if element == None:
             return None
         else:
-            while element != None:
-                for e in element:
-                    if e[0] in collect:
-                        collect[e[0]].append(e[1])
-                    else:
-                        collect[e[0]] = [e[1]]
-                element = self.parent.get()
+            for e in element:
+                if e[0] in collect:
+                    collect[e[0]].append(e[1])
+                else:
+                    collect[e[0]] = [e[1]]
         rst = []
         for key in collect.keys():
             v = collect.get(key)
-            rst.append({key:reduce(self.func,v)})
+            rst.append((key, reduce(self.func,v)))
         return rst
 
 
