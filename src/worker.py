@@ -1,11 +1,13 @@
 import zerorpc
 import gevent
 import socket
-
+import StringIO
+import pickle
 import sys
 import time
 import json
 from gevent.queue import Queue
+from util.util_debug import *
 
 
 class Worker():
@@ -18,128 +20,10 @@ class Worker():
         else:
             self.worker_address = worker_address
             self.is_remote = True
-        self.all_map_task_list = {}
-        self.all_reduce_task_list = {}
+        self.all_task_list = {}
         self.current_mapper = None
         self.current_reducer = None
-        self.MapperTaskQueue = Queue()
-        self.ReducerTaskQueue = Queue()
-
-    def mapper(self, map_task):
-        task = map_task
-        if self.current_mapper is not None:
-            if self.current_mapper.state != 'FINISH':
-                print "Create mapper failed: last mapper not finished. key: %s, task_id: %s  at %s" % (
-                    task.split_id, task.task_id, time.asctime(time.localtime(time.time())))
-                return -1
-            else:
-                self.current_mapper.changeToFinish = False
-        self.current_mapper = task
-        # No this job, create it
-        if self.all_map_task_list.has_key(task.job_id) == False:
-            map_list = {}
-            map_list[task.split_id] = task
-            self.all_map_task_list[task.job_id] = map_list
-        else:
-            self.all_map_task_list[task.job_id][task.split_id] = task
-
-        task.state = 'STARTING'
-        task.progress = 'Starting.'
-        if task.className == 'WordCount':
-            engine = WordCountEngine(task.infile, task.num_reducers, task.outfile)
-            partitions = engine.map_execute(task.splits, task.split_id)
-        if task.className == 'Sort':
-            engine = SortEngine(task.infile, task.num_reducers, task.outfile)
-            partitions = engine.map_execute(task.splits, task.split_id)
-        if task.className == 'hammingEnc' or task.className == 'hammingDec' or task.className == 'hammingFix' \
-                or task.className == 'hammingChk' or task.className == 'hammingErr':
-            engine = HammingEngine(task.infile, task.num_reducers, task.outfile)
-            partitions = engine.map_execute(task.splits, task.className, task.split_id)
-        task.partitions = partitions
-        task.state = 'FINISH'
-        task.progress = 'Finish mapping.'
-        task.changeToFinish = True
-        print "Mapper finished: Key: %s at %s" % (
-            task.split_id, time.asctime(time.localtime(time.time())))
-
-    def collectAllInputsForReducer(self, task):
-        # get all input from other workers
-        count = 0
-        while True:
-            try:
-                client1 = zerorpc.Client()
-                client1.connect('tcp://' + self.master_address)
-                # get input locations from master
-                locations = client1.getMapResultLocation(task.job_id)
-                if locations is not None:
-                    client1.close()
-                    for split_id, worker in locations.items():
-                        # if didn't has that input, get input from mapper; else ignore;
-                        key = str(split_id) + str(task.partition_id)
-                        if task.partitions.has_key(key) == False:
-                            client = zerorpc.Client(timeout=300)
-                            client.connect('tcp://' + worker['address'])
-                            partition = client.getPartition(task.job_id, split_id, task.partition_id)
-                            if partition is not None:
-                                client.close()
-                                task.partitions[key] = partition
-                                # print "Get partition %s from worker %s successfully at %s" % (
-                                #     key, worker['address'], time.asctime(time.localtime(time.time())))
-                            else:
-                                print "Get partition %s from worker %s failed at %s" % (
-                                    key, worker['address'], time.asctime(time.localtime(time.time())))
-            except zerorpc.LostRemote:
-                print "RPC error: lost remote"
-                pass
-
-            # Get all inputs
-            if len(task.partitions) == task.num_mappers:
-                # print "Get all partitions for reducer: key: %s, task_id: %s, length: %d at %s" % (
-                #     task.partition_id, task.task_id, len(task.partitions),
-                #     time.asctime(time.localtime(time.time())))
-                return 0
-            count += 1
-            # print "reducer wait for input times: %d" %count
-            gevent.sleep(5)
-
-    def reducer(self, reduce_task):
-        task = reduce_task
-        if self.current_reducer is not None:
-            if self.current_reducer.state != 'FINISH':
-                print "Create reducer failed: last reducer not finished. key: %s, task_id: %s  at %s" % (
-                    task.partition_id, task.task_id, time.asctime(time.localtime(time.time())))
-                return -1
-        self.current_reducer = task
-        # No this job, create it
-        if self.all_reduce_task_list.has_key(task.job_id) == False:
-            reduce_list = {}
-            reduce_list[task.partition_id] = task
-            self.all_reduce_task_list[task.job_id] = reduce_list
-        else:
-            self.all_reduce_task_list[task.job_id][task.partition_id] = task
-
-        task.state = 'STARTING'
-        task.progress = 'Starting.'
-
-        self.collectAllInputsForReducer(task)
-
-        if task.className == 'WordCount':
-            # reducer = mr_classes.WordCountReduce()
-            engine = WordCountEngine(task.infile, task.num_reducers, task.outfile)
-        if task.className == 'Sort':
-            engine = SortEngine(task.infile, task.num_reducers, task.outfile)
-        if task.className == 'hammingEnc' or task.className == 'hammingDec' or task.className == 'hammingFix' \
-                or task.className == 'hammingChk' or task.className == 'hammingErr':
-            engine = HammingEngine(task.infile, task.num_reducers, task.outfile)
-
-        # print "input partitions: ",task.partitions
-        engine.reduce_execute(task.partitions, task.partition_id)
-
-        task.state = 'FINISH'
-        task.progress = 'Finish reducing.'
-        task.changeToFinish = True
-        print "Reducer finished: Key: %s at %s" % (
-            task.partition_id, time.asctime(time.localtime(time.time())))
+        self.TaskQueue = Queue()
 
     def getMyAddress(self):
         try:
@@ -150,22 +34,6 @@ class Worker():
             return addr + ":" + port
         except socket.error:
             return "127.0.0.1"
-
-    def getPartition(self, job_id, split_id, partition_id):
-        if self.all_map_task_list.has_key(job_id):
-            if self.all_map_task_list[job_id].has_key(split_id):
-                key = str(split_id) + str(partition_id)
-                # print "Prepare get partition %s" %(key)
-                # print "Now partition keys: ", self.all_map_task_list[job_id][split_id].partitions.keys()
-                return self.all_map_task_list[job_id][split_id].partitions[key]
-        return None
-
-    def getReducerResult(self, partition_id, outfile_base):
-        filename = outfile_base + "_" + str(partition_id) + ".json"
-        with open(filename, 'r') as f:
-            data = json.load(f)
-            # print "Get reduce file success, partition id:", partition_id
-        return data
 
     def startRPCServer(self):
         master = zerorpc.Server(self)
@@ -178,6 +46,15 @@ class Worker():
         master.bind('tcp://' + addr)
         master.run()
 
+    def runPartition(self, partitionStr):
+        input = StringIO.StringIO(partitionStr)
+        unpickler = pickle.Unpickler(input)
+        partition = unpickler.load()
+        result = partition.get()
+        key = partition.rdd_id+":"+partition.partition_id
+        self.all_task_list[key] = { }
+
+
     def register(self):
         client = zerorpc.Client()
         client.connect('tcp://' + self.master_address)
@@ -185,38 +62,17 @@ class Worker():
         if self.id is not None:
             client.close()
             addr = self.worker_address
-            print "worker %d  %s registered at %s " % (self.id, addr, time.asctime(time.localtime(time.time())))
+            debug_print("worker %d  %s registered at %s " % (self.id, addr, time.asctime(time.localtime(time.time()))))
 
 
-    def convertDictToMapTask(self, dict):
-        task = MapTask(dict['job_id'], dict['split_id'], dict['task_id'], dict['className'], dict['worker'],
-                       dict['splits'], dict['infile'], dict['partitions'], dict['num_reducers'], dict['outfile'])
-        return task
-
-    def convertDictToReduceTask(self, dict):
-        task = ReduceTask(dict['job_id'], dict['partition_id'], dict['task_id'], dict['className'], dict['worker'],
-                          dict['partitions'], dict['outfile'], dict['num_mappers'], dict['infile'],
-                          dict['num_reducers'])
-        return task
-
-    def startMap(self, task_dict):
-        # print "Begin create map thread: at %s" % (time.asctime(time.localtime(time.time())))
-        task = self.convertDictToMapTask(task_dict)
-        # thread = gevent.spawn(self.mapper, task)
-        # print "Create map thread: %s at %s" % (thread, time.asctime(time.localtime(time.time())))
-        self.MapperTaskQueue.put(task)
+    def startTask(self, task):
+        self.TaskQueue.put(task)
         return 0
 
-    def startReduce(self, task_dict):
-        task = self.convertDictToReduceTask(task_dict)
-        self.ReducerTaskQueue.put(task)
-        # gevent.spawn(self.reducer(task))
-        return 0
-
-    def MapperManage(self):
+    def TaskManager(self):
         while True:
-            while not self.MapperTaskQueue.empty():
-                mapperTask = self.MapperTaskQueue.get()
+            while not self.TaskQueue.empty():
+                mapperTask = self.TaskQueue.get()
                 # print "Create map thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
                 thread = gevent.spawn(self.mapper, mapperTask)
                 print "Mapper created: Key: %d at %s" % (
@@ -234,7 +90,6 @@ class Worker():
             gevent.sleep(0)
 
     def heartbeat(self):
-
         while True:
             Local_current_mapper = self.current_mapper
             Local_current_Reducer = self.current_reducer
