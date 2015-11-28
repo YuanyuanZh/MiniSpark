@@ -1,6 +1,4 @@
 import re
-import sys
-from src.rdd import partition
 
 
 class RDD(object):
@@ -42,6 +40,39 @@ class RDD(object):
         pass
 
 
+class NarrowRDD(RDD):
+    def __int__(self,parent):
+        super(NarrowRDD,self).__init__()
+        self.parent = parent
+
+    def get_lineage(self):
+        lineage = self.parent.get_lineage()
+        lineage.append((self,self.id))
+        self.lineage = lineage
+        return lineage
+
+    def partitions(self):
+        partitions = self.parent.partitions()
+        index = self.lineage.index((self,self.id))
+        next_op = self.lineage[index+1]
+        if index+1 < len(self.lineage):
+            if isinstance(next_op[0], WideRDD):
+                new_partitions = []
+                for i in range(self.num_partitions):
+                    sub = []
+                    for j in range(next_op[0].num_partitions):
+                        sub.append(str(i)+str(j))
+                    new_partitions.append(sub)
+                partitions = new_partitions
+        return partitions
+
+
+class WideRDD(RDD):
+    def __int__(self,parent):
+        super(WideRDD,self).__init__()
+        self.parent = parent
+
+
 class TextFile(RDD):
 
     def __init__(self, filename, partition, num_partitions):
@@ -62,7 +93,7 @@ class TextFile(RDD):
         partitions = []
         index = self.lineage.index((self,self.id))
         next_op = self.lineage[index+1]
-        if re.sub(r'_[0-9]', "", next_op[1]) in RDD.narrow:
+        if isinstance(next_op[0], WideRDD):
             for i in range(self.num_partitions):
                 partitions.append([str(i)])
         else:
@@ -105,7 +136,7 @@ class TextFile(RDD):
         return rst
 
 
-class Map(RDD):
+class Map(NarrowRDD):
 
     def __init__(self, parent, func):
         super(Map,self).__init__()
@@ -114,27 +145,6 @@ class Map(RDD):
         self.id = "Map_{0}".format(Map.current_id)
         Map.current_id += 1
         self.num_partitions = self.parent.num_partitions
-
-    def get_lineage(self):
-        lineage = self.parent.get_lineage()
-        lineage.append((self,self.id))
-        self.lineage = lineage
-        return lineage
-
-    def partitions(self):
-        partitions = self.parent.partitions()
-        index = self.lineage.index((self,self.id))
-        next_op = self.lineage[index+1]
-        if index+1 < len(self.lineage):
-            if re.sub(r'_[0-9]', "", next_op[1]) in RDD.wide:
-                new_partitions = []
-                for i in range(self.num_partitions):
-                    sub = []
-                    for j in range(next_op[0].num_partitions):
-                        sub.append(str(i)+str(j))
-                    new_partitions.append(sub)
-                partitions = new_partitions
-        return partitions
 
     def get(self):
 
@@ -148,7 +158,7 @@ class Map(RDD):
             return element_new
 
 
-class Filter(RDD):
+class Filter(NarrowRDD):
     
     def __init__(self, parent, func):
         super(Filter,self).__init__()
@@ -157,27 +167,6 @@ class Filter(RDD):
         self.id = "Filter_{0}".format(Filter.current_id)
         Filter.current_id += 1
         self.num_partitions = 0
-
-    def get_lineage(self):
-        lineage = self.parent.get_lineage()
-        lineage.add((self,self.id))
-        self.lineage = lineage
-        return lineage
-
-    def partitions(self):
-        partitions = self.parent.partitions()
-        index = self.lineage.index((self,self.id))
-        if index+1 < len(self.lineage):
-            next_op = self.lineage[index+1]
-            if re.sub(r'_[0-9]', "", next_op[1]) in RDD.wide:
-                new_partitions = []
-                for i in range(self.num_partitions):
-                        sub = []
-                        for j in range(next_op[0].num_partitions):
-                            sub.append(str(i)+str(j))
-                        new_partitions.append(str(i))
-                partitions = new_partitions
-        return partitions
 
     def get(self):
         while True:
@@ -189,7 +178,7 @@ class Filter(RDD):
                     return element
 
 
-class FlatMap(RDD):
+class FlatMap(NarrowRDD):
 
     def __init__(self, parent, func):
         super(FlatMap,self).__init__()
@@ -198,27 +187,6 @@ class FlatMap(RDD):
         self.id = "FlatMap_{0}".format(FlatMap.current_id)
         FlatMap.current_id +=1
         self.num_partitions = self.parent.num_partitions
-
-    def get_lineage(self):
-        lineage = self.parent.get_lineage()
-        lineage.append((self,self.id))
-        self.lineage = lineage
-        return lineage
-
-    def partitions(self):
-        partitions = self.parent.partitions()
-        index = self.lineage.index((self,self.id))
-        if index+1 < len(self.lineage):
-            next_op = self.lineage[index+1]
-            if re.sub(r'_[0-9]', "", next_op[1]) in RDD.wide:
-                new_partitions = []
-                for i in range(self.num_partitions):
-                        sub = []
-                        for j in range(next_op[0].num_partitions):
-                            sub.append(str(i)+str(j))
-                        new_partitions.append(str(i))
-                partitions = new_partitions
-        return partitions
 
     def get(self):
         element = self.parent.get()
@@ -237,11 +205,13 @@ class Join(RDD):
         super(Join,self).__init__()
         self.parent = parent
 
+
 class MapValue(RDD):
     def __init__(self, parent,func):
         super(MapValue,self).__init__()
         self.parent = parent
         self.func = func
+
 
 class GroupByKey(RDD):
 
@@ -272,7 +242,7 @@ class GroupByKey(RDD):
             return element_new
 
 
-class ReduceByKey(RDD):
+class ReduceByKey(WideRDD):
 
     def __init__(self, parent,func):
         super(ReduceByKey,self).__init__()
@@ -293,7 +263,7 @@ class ReduceByKey(RDD):
         index = self.lineage.index((self,self.id))
         if index+1 < len(self.lineage):
             next_op = self.lineage[index+1]
-            if re.sub(r'_[0-9]', "", next_op[1]) in RDD.wide:
+            if isinstance(next_op[0], WideRDD):
                 for i in range(self.num_partitions):
                     sub = []
                     for j in range(next_op[0].num_partitions):
@@ -323,42 +293,6 @@ class ReduceByKey(RDD):
             rst.append({key:reduce(self.func,v)})
         return rst
 
-if __name__ == '__main__':
-    filename = sys.argv[1]
-    # partitions = partition.FilePartition('../../files/wordcount',1).partition()
-    # for p in partitions:
-    #     # r = TextFile('myfile',partitions.get(p))
-    #     # m = Map(r, lambda s: s.split())
-    #     # f = Filter(m, lambda a: int(a[1]) > 2)
-    #     # print f.collect()
-    #     lines = TextFile('../../files/wordcount',partitions.get(p), 1)
-    #     f = FlatMap(lines,lambda x: x.split(' '))
-    #     m = Map(f,lambda x: (x, 1))
-    #     counts = ReduceByKey(m,lambda a, b: a+b)
-    #     output = counts.collect()
-    #     print(output)
-    #     print (counts.get_lineage())
-    #     print(lines.partitions())
-    #     print (f.partitions())
-    #     print(m.partitions())
-    #     print(counts.partitions())
-
-    def computeContribs(l, r):
-        return l/len(r)
-
-    partitions = partition.FilePartition(filename,1).partition()
-    for p in partitions:
-        t = TextFile(filename,partitions.get(p))
-        links = Map(t,lambda s: s.split())
-        ranks = Map(links,lambda url_neighbors: (url_neighbors[0], 1.0))
-        for iteration in range(int(sys.argv[2])):
-            joins = Join(links, ranks)
-            contribs = FlatMap(joins,lambda url_urls_rank: computeContribs(url_urls_rank[1][0], url_urls_rank[1][1]))
-            ranks = ReduceByKey(contribs,lambda a,b:a+b)
-            rst = MapValue(ranks,lambda rank: rank * 0.85 + 0.15)
-            collect = rst.collect()
-        for (link, rank) in collect:
-            print("%s has rank: %s."%(link, rank))
 
 
 
