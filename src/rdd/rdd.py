@@ -1,4 +1,7 @@
+import zerorpc
 from src.rdd import partition
+from src.util import util_pickle
+
 
 class RDD(object):
     default = {}
@@ -31,8 +34,11 @@ class RDD(object):
     def count(self):
         return len(self.collect())
 
-    def reduce(self):
-        pass
+    def reduce(self, func):
+        client=zerorpc.Client()
+        driver=client.connect(self.config["driver_addr"])
+        seialized_rdd= util_pickle.pickle_object(self)
+        return driver.do_drive(seialized_rdd)
 
     def save(self,path,output_name):
         pass
