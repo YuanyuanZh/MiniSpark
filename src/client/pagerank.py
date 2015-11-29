@@ -3,6 +3,7 @@ from src.rdd import partition
 import sys
 import re
 
+
 def computeContribs(urls, rank):
     """Calculates URL contributions to the rank of other URLs."""
     num_urls = len(urls)
@@ -20,7 +21,7 @@ def parseNeighbors(urls):
 if __name__ == '__main__':
     filename = sys.argv[1]
 
-    partitions = partition.FilePartition(filename,1).partition()
+    partitions = partition.RangePartition(filename,1).partition()
     for p in partitions:
         t = rdd.TextFile(filename,partitions.get(p), 1)
         m = rdd.Map(t,(lambda urls: parseNeighbors(urls)))
@@ -36,6 +37,7 @@ if __name__ == '__main__':
             print(m.partitions())
             print(links.partitions())
             print(ranks.partitions())
+            print(joins.partitions())
             print(contribs.partitions())
             print(ranks.partitions())
             print(rst.partitions())

@@ -1,10 +1,12 @@
+from src.rdd import partition
+
 class RDD(object):
     default = {}
     default['num_partition_RBK'] = 2
     default['num_partition_GBK'] = 2
     current_id = 0
 
-    def __init__(self,config = default):
+    def __init__(self, config = default):
         self.lineage = None
         self.config = config
 
@@ -35,6 +37,16 @@ class RDD(object):
     def save(self,path,output_name):
         pass
 
+    def get_data(self,address,key):
+        #todo ZeroRPC
+        if len(key) == 1:
+            return self.get()
+        else:
+            data = self.get()
+            hash_partitioner = partition.HashPartition(data,len(self.partitions()[0]))
+            partitioned_date = hash_partitioner.partition()
+            return partitioned_date[int(key[1])]
+
 
 class NarrowRDD(RDD):
     def __int__(self,parent):
@@ -62,6 +74,9 @@ class NarrowRDD(RDD):
                 partitions = new_partitions
         return partitions
 
+    def partitioner(self):
+        return 'RangePartition'
+
 
 class WideRDD(RDD):
     def __int__(self):
@@ -87,16 +102,20 @@ class WideRDD(RDD):
                 partitions.append([str(i)])
         return partitions
 
+    def partitioner(self):
+        return 'HashPartition'
+
+
 class TextFile(RDD):
 
     def __init__(self, filename, partition, num_partitions):
         super(TextFile,self).__init__()
         self.filename = filename
-        self.lines = None
-        self.index = 0
+        # self.index = 0
         self.partition = partition
         self.num_partitions = num_partitions
         self.id = "TextFile"
+        self.data = None
 
     def get_lineage(self):
         lineage =[(self,self.id)]
@@ -119,11 +138,11 @@ class TextFile(RDD):
         return partitions
 
     def get(self):
-        if not self.lines:
+        if not self.data:
             f = open(self.filename)
-            self.lines = self.read_file(f)
+            self.data = self.read_file(f)
             f.close()
-        return self.lines
+        return self.data
         # if self.index == len(self.lines):
         #     return None
         # else:
@@ -159,17 +178,19 @@ class Map(NarrowRDD):
         self.id = "Map_{0}".format(Map.current_id)
         Map.current_id += 1
         self.num_partitions = self.parent.num_partitions
+        self.data = []
 
     def get(self):
-
-        element = self.parent.get()
-        if element == None:
-            return None
-        else:
-            element_new = []
+        if not self.data:
+            element = self.parent.get()
+            if element == None:
+                return None
+            else:
+                element_new = []
             for e in element:
                 element_new.append(self.func(e))
-            return element_new
+                self.data = element_new
+        return self.data
 
 
 class Filter(NarrowRDD):
@@ -180,7 +201,8 @@ class Filter(NarrowRDD):
         self.func = func
         self.id = "Filter_{0}".format(Filter.current_id)
         Filter.current_id += 1
-        self.num_partitions = 0
+        self.num_partitions = self.parent.num_partitions
+        self.data = None
 
     def get(self):
         while True:
@@ -201,44 +223,66 @@ class FlatMap(NarrowRDD):
         self.id = "FlatMap_{0}".format(FlatMap.current_id)
         FlatMap.current_id +=1
         self.num_partitions = self.parent.num_partitions
+        self.data = None
 
     def get(self):
-        element = self.parent.get()
-        if element == None:
-            return None
-        else:
-            new_element = []
-            for e in element:
-                rst = self.func(e)
-                new_element += rst
-            return new_element
+        if not self.data:
+            element = self.parent.get()
+            if element == None:
+                return None
+            else:
+                new_element = []
+                for e in element:
+                    rst = self.func(e)
+                    new_element += rst
+                self.data = new_element
+        return self.data
 
 
-class Join(RDD):
+class Join(NarrowRDD):
     def __init__(self, parent):
         super(Join,self).__init__()
         self.parent = parent
         self.id = "Join_{0}".format(Join.current_id)
         Join.current_id += 1
         self.num_partitions = 1
+        self.data = None
 
     def get_lineage(self):
         lineage = []
         for p in self.parent:
             lineage.append(p.get_lineage())
         lineage.append((self,self.id))
+        self.lineage = lineage
         return lineage
 
     def get(self):
-        element1 = self.parent[0].get()
-        element2 = self.parent[1].get()
-        if element1 == None or element2 == None:
-            return None
-        else:
-            rst = []
-            for i in range(len(element1)):
-                rst.append((element1[i][0],(element1[i][1],element2[i][1])))
-            return rst
+        if not self.data:
+            element1 = self.parent[0].get()
+            element2 = self.parent[1].get()
+            if element1 == None or element2 == None:
+                return None
+            else:
+                rst = []
+                for i in range(len(element1)):
+                    rst.append((element1[i][0],(element1[i][1],element2[i][1])))
+                self.data = rst
+        return self.data
+
+    def partitions(self):
+        partitions = self.parent[0].partitions()
+        index = self.lineage.index((self,self.id))
+        if index+1 < len(self.lineage):
+            next_op = self.lineage[index+1]
+            if isinstance(next_op[0], WideRDD):
+                new_partitions = []
+                for i in range(self.num_partitions):
+                    sub = []
+                    for j in range(next_op[0].num_partitions):
+                        sub.append(str(i)+str(j))
+                    new_partitions.append(sub)
+                partitions = new_partitions
+        return partitions
 
 
 class MapValue(NarrowRDD):
@@ -248,16 +292,20 @@ class MapValue(NarrowRDD):
         self.func = func
         self.id = "MapValue_{0}".format(MapValue.current_id)
         MapValue.current_id += 1
+        self.data = None
 
     def get(self):
-        element = self.parent.get()
-        if element == None:
-            return None
-        else:
-            rst = []
-            for e in element:
-                rst.append((e[0],self.func(e[1])))
-            return rst
+        if not self.data:
+            element = self.parent.get()
+            if element == None:
+                return None
+            else:
+                rst = []
+                for e in element:
+                    rst.append((e[0],self.func(e[1])))
+                self.data = rst
+        return self.data
+
 
 class GroupByKey(WideRDD):
 
@@ -267,6 +315,7 @@ class GroupByKey(WideRDD):
         self.id = "GroupByKey_{0}".format(GroupByKey.current_id)
         GroupByKey.current_id += 1
         self.num_partitions = self.config['num_partition_GBK']
+        self.data = None
 
     def get_lineage(self):
         lineage = self.parent.get_lineage()
@@ -275,22 +324,25 @@ class GroupByKey(WideRDD):
         return lineage
 
     def get(self):
-        element = self.parent.get()
-        if element == None:
-            return None
-        else:
-            element_new = {}
-            for e in element:
-                k = e[0]
-                v = e[1]
-                if k in element_new:
-                    element_new[k].append(v)
-                else:
-                    element_new[k] = [v]
-            rst = []
-            for key in element_new.keys():
-                rst.append((key,element_new.get(key)))
-            return rst
+        if not self.data:
+            element = self.parent.get()
+            if element == None:
+                return None
+            else:
+                element_new = {}
+                for e in element:
+                    k = e[0]
+                    v = e[1]
+                    if k in element_new:
+                        element_new[k].append(v)
+                    else:
+                        element_new[k] = [v]
+                rst = []
+                for key in element_new.keys():
+                    rst.append((key,element_new.get(key)))
+                self.data = rst
+        return self.data
+
 
 class ReduceByKey(WideRDD):
 
@@ -301,6 +353,7 @@ class ReduceByKey(WideRDD):
         ReduceByKey.current_id += 1
         self.func = func
         self.num_partitions = self.config['num_partition_RBK']
+        self.data = None
 
     def get_lineage(self):
         lineage = self.parent.get_lineage()
@@ -309,21 +362,23 @@ class ReduceByKey(WideRDD):
         return lineage
 
     def get(self):
-        collect = {}
-        element = self.parent.get()
-        if element == None:
-            return None
-        else:
-            for e in element:
-                if e[0] in collect:
-                    collect[e[0]].append(e[1])
-                else:
-                    collect[e[0]] = [e[1]]
-        rst = []
-        for key in collect.keys():
-            v = collect.get(key)
-            rst.append((key, reduce(self.func,v)))
-        return rst
+        if not self.data:
+            collect = {}
+            element = self.parent.get()
+            if element == None:
+                return None
+            else:
+                for e in element:
+                    if e[0] in collect:
+                        collect[e[0]].append(e[1])
+                    else:
+                        collect[e[0]] = [e[1]]
+            rst = []
+            for key in collect.keys():
+                v = collect.get(key)
+                rst.append((key, reduce(self.func,v)))
+            self.data = rst
+        return self.data
 
 
 
