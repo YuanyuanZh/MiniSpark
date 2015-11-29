@@ -61,6 +61,7 @@ class NarrowRDD(RDD):
 
     def partitions(self):
         partitions = self.parent.partitions()
+        self.num_partitions = self.parent.num_partitions
         index = self.lineage.index((self,self.id))
         if index+1 < len(self.lineage):
             next_op = self.lineage[index+1]
@@ -69,7 +70,7 @@ class NarrowRDD(RDD):
                 for i in range(self.num_partitions):
                     sub = []
                     for j in range(next_op[0].num_partitions):
-                        sub.append(str(i)+str(j))
+                        sub.append(str(i)+'_'+str(j))
                     new_partitions.append(sub)
                 partitions = new_partitions
         return partitions
@@ -92,14 +93,14 @@ class WideRDD(RDD):
                 for i in range(self.num_partitions):
                     sub = []
                     for j in range(next_op[0].num_partitions):
-                        sub.append(str(i)+str(j))
+                        sub.append(str(i)+'_'+str(j))
                     partitions.append(sub)
             else:
                 for i in range(self.num_partitions):
-                    partitions.append([str(i)])
+                    partitions.append([str(i)+'_'+str(i)])
         else:
             for i in range(self.num_partitions):
-                partitions.append([str(i)])
+                partitions.append([str(i)+'_'+str(i)])
         return partitions
 
     def partitioner(self):
@@ -128,12 +129,12 @@ class TextFile(RDD):
         next_op = self.lineage[index+1]
         if isinstance(next_op[0], NarrowRDD):
             for i in range(self.num_partitions):
-                partitions.append([str(i)])
+                partitions.append([str(i)+'_'+str(i)])
         else:
             for i in range(self.num_partitions):
                 sub = []
                 for j in range(next_op[0].num_partitions):
-                    sub.append(str(i)+str(j))
+                    sub.append(str(i)+'_'+str(j))
                 partitions.append(sub)
         return partitions
 
@@ -271,6 +272,7 @@ class Join(NarrowRDD):
 
     def partitions(self):
         partitions = self.parent[0].partitions()
+        self.num_partitions = self.parent[0].num_partitions
         index = self.lineage.index((self,self.id))
         if index+1 < len(self.lineage):
             next_op = self.lineage[index+1]
@@ -279,7 +281,7 @@ class Join(NarrowRDD):
                 for i in range(self.num_partitions):
                     sub = []
                     for j in range(next_op[0].num_partitions):
-                        sub.append(str(i)+str(j))
+                        sub.append(str(i)+'_'+str(j))
                     new_partitions.append(sub)
                 partitions = new_partitions
         return partitions
