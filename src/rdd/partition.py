@@ -6,20 +6,30 @@ class Partition(object):
         pass
 
 
-class HashPartition(Partition):
+class HashPartition(object):
+    def __init__(self, data, num_partitions):
+        super(HashPartition,self).__init__()
+        self.data = data
+        self.num_partitions = num_partitions
+
     def partition(self):
-        pass
+        rst = {}
+        for i in range(len(self.data)):
+            hashcode = self.hash_func(self.data[i][0])
+            if hashcode in rst:
+                rst[hashcode].append(self.data[i])
+            else:
+                rst[hashcode] = [self.data[i]]
+        return rst
+
+    def hash_func(self,key):
+        return ord(key[0])%self.num_partitions
 
 
 class RangePartition(Partition):
-    def partition(self):
-        pass
-
-
-class FilePartition(Partition):
 
     def __init__(self,filename,num_partition):
-        super(FilePartition,self).__init__()
+        super(RangePartition,self).__init__()
         self.filename = filename
         self.num_partition = num_partition
 
