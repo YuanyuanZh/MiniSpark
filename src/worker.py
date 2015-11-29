@@ -52,7 +52,7 @@ class Worker():
         partition = unpickler.load()
         result = partition.get()
         key = partition.rdd_id+":"+partition.partition_id
-        self.all_task_list[key] = { }
+        self.all_task_list[key] = {"status": }
 
 
     def register(self):
@@ -77,16 +77,6 @@ class Worker():
                 thread = gevent.spawn(self.mapper, mapperTask)
                 print "Mapper created: Key: %d at %s" % (
                         mapperTask.split_id, time.asctime(time.localtime(time.time())))
-            gevent.sleep(0)
-
-    def ReducerManage(self):
-        while True:
-            while not self.ReducerTaskQueue.empty():
-                reducerTask = self.ReducerTaskQueue.get()
-                # print "Create reduce thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
-                thread = gevent.spawn(self.reducer, reducerTask)
-                print "Reduce created: Key: %d at %s" % (
-                    reducerTask.partition_id, time.asctime(time.localtime(time.time())))
             gevent.sleep(0)
 
     def heartbeat(self):
