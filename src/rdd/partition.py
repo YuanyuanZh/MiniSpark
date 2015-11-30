@@ -8,7 +8,7 @@ class Partition(object):
 
 class HashPartition(object):
     def __init__(self, data, num_partitions):
-        super(HashPartition,self).__init__()
+        super(HashPartition, self).__init__()
         self.data = data
         self.num_partitions = num_partitions
 
@@ -22,12 +22,11 @@ class HashPartition(object):
                 rst[hashcode] = [self.data[i]]
         return rst
 
-    def hash_func(self,key):
-        return ord(key[0])%self.num_partitions
+    def hash_func(self, key):
+        return ord(key[0]) % self.num_partitions
 
 
 class RangePartition(Partition):
-
     def __init__(self, filename, split_size):
         super(RangePartition, self).__init__()
         self.filename = filename
@@ -45,5 +44,3 @@ class RangePartition(Partition):
             partition_id += 1
             offset += self.split_size
         return rst
-
-
