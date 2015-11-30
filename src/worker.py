@@ -5,7 +5,6 @@ import StringIO
 import pickle
 import sys
 import time
-import json
 from gevent.queue import Queue
 from util.util_debug import *
 from util.util_enum import *
@@ -22,10 +21,9 @@ class Worker():
             self.worker_address = worker_address
             self.is_remote = True
         self.all_task_list = {}
-        self.current_mapper = None
-        self.current_reducer = None
         self.TaskQueue = Queue()
         self.debug = debug
+        self.streaming_data = {}
 
     def getMyAddress(self):
         try:
@@ -36,6 +34,25 @@ class Worker():
             return addr + ":" + port
         except socket.error:
             return "127.0.0.1"
+
+    def get_streaming_message(self, value):
+       """
+       Function to get and store streaming message.
+
+       :param value: spark streaming message
+              spark streaming message is "job_id,partition_id,value"
+       """
+       value_array = value.split(",")
+       job_id = value_array[0]
+       partition_id = value_array[1]
+       value = value_array[2]
+
+       if job_id not in self.streaming_data.keys():
+           self.streaming_data[job_id] = {}
+       if partition_id not in self.streaming_data[job_id].keys():
+           self.streaming_data[job_id][partition_id] = []
+       self.streaming_data[job_id][partition_id].append(value)
+       self.streaming_data = {}
 
     def startRPCServer(self):
         master = zerorpc.Server(self)
@@ -119,11 +136,10 @@ class Worker():
         self.register()
         # self.startRPCServer()
         thread1 = gevent.spawn(self.heartbeat)
-        thread2 = gevent.spawn(self.MapperManage)
-        thread3 = gevent.spawn(self.ReducerManage)
-        thread4 = gevent.spawn(self.startRPCServer)
+        thread2 = gevent.spawn(self.TaskManager())
+        thread3 = gevent.spawn(self.startRPCServer)
         # self.startRPCServer()
-        gevent.joinall([thread1, thread3, thread2, thread4])
+        gevent.joinall([thread1, thread3, thread2])
 
 
 if __name__ == '__main__':
