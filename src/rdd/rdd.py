@@ -179,6 +179,15 @@ class TextFile(RDD):
         return rst
 
 
+class Streaming(RDD):
+    def __init__(self):
+        pass
+
+    def get(self, input_source):
+        partition_id = input_source['partition_id']
+        return input_source['streaming_data'][partition_id]
+
+
 class Map(NarrowRDD):
 
     def __init__(self, parent, func):

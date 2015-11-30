@@ -5,7 +5,6 @@ class Task(object):
         :param last_rdd:
         :param input_source:
         :param partition_id: i_j (stage i, partition j)
-        :return:
         """
         self.worker = None
         self.last_rdd = last_rdd
