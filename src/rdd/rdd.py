@@ -27,22 +27,20 @@ class RDD(object):
         return lineage
 
     def collect(self):
-        # elements = []
-        # while True:
-        element = self.get()
-        if element == None:
-            return None
-        # elements.append(element)
-        return element
+        client = get_client(RDD._config['driver_addr'])
+        return execute_command(client, client.do_collect,
+                               util_pickle.pickle_object(self))
 
     def count(self):
-        return len(self.collect())
+        client = get_client(RDD._config['driver_addr'])
+        return execute_command(client, client.do_count,
+                               util_pickle.pickle_object(self))
 
     def reduce(self, func):
-        client = zerorpc.Client()
-        driver = client.connect(self._config["driver_addr"])
-        seialized_rdd = util_pickle.pickle_object(self)
-        return driver.do_drive(seialized_rdd)
+        client = get_client(RDD._config['driver_addr'])
+        return execute_command(client, client.do_count,
+                               util_pickle.pickle_object(self),
+                               func)
 
     def save(self, path, output_name):
         pass
@@ -122,7 +120,7 @@ class WideRDD(RDD):
         for partition in input_source:
             client = get_client(partition['worker_addr'])
             result += execute_command(client, client.get_rdd_result,
-                                      partition['parent_id'],
+                                      partition['task_id'],
                                       partition['partition_id'])
         return result
 
