@@ -107,20 +107,9 @@ class Worker():
                 if ret is not None:
                     client.close()
                     if ret == 0:
-                        if Local_current_mapper is not None:
-                            if Local_current_mapper.changeToFinish == True:
-                                # print "Worker update status Suc: worker_id: %s, key: %d C_key: %d at %s" % (
-                                # self.id, status.mapper_status.split_id, self.current_mapper.split_id,time.asctime(time.localtime(time.time())))
-                                Local_current_mapper.changeToFinish = False
-                        if Local_current_Reducer is not None:
-                            if Local_current_Reducer.changeToFinish == True:
-                                Local_current_Reducer.changeToFinish = False
-                    else:
-                        print "Worker update status failed with undefined return: worker_id: %s, key: at %s" % (
-                        self.id, time.asctime(time.localtime(time.time())))
-                else:
-                    print "Worker update status failed: worker_id: %s, key: at %s" % (
-                        self.id, time.asctime(time.localtime(time.time())))
+                        for key, value in self.all_task_list.items():
+                            if value['status'] == Status.FINISH:
+                                value['status'] = Status.FINISH_REPORTED
             except  zerorpc.LostRemote:
                 print "RPC error: lost remote"
                 pass

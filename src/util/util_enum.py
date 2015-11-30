@@ -8,7 +8,7 @@ If you want to know more detail, please read the README.md
 from enum import Enum
 
 # Event enum variable
-Event = Enum('Event','REGISTER NEWJOB FINISH TASK WORKERDOWN FINISHJOB')
+Event = Enum('Event','REGISTER NEW_JOB FINISH_TASK WORKER_DOWN FINISH_JOB')
 
 # Task status enum variable
 Status = Enum('Status', 'INITIAL START PROCESSING FINISH FINISH_REPORTED')

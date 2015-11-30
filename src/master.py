@@ -10,6 +10,7 @@ import os
 
 
 from util.util_enum import *
+from util.util_debug import *
 
 class Master():
     def __init__(self, port, data_dir):
@@ -31,28 +32,6 @@ class Master():
         self.job_id += 1
         return self.job_id
 
-    def splitInput(self, infile,split_size,classname):
-        if classname == 'hammingEnc' or classname == 'hammingDec' or classname == 'hammingFix':
-            split_hashmap = input_split.hammingSplit(infile,split_size,classname).generate_split_info()
-        else:
-            split_hashmap = input_split.Split(infile,split_size,classname).generate_split_info()
-        return split_hashmap
-
-    def submitJob(self, conf):
-        # create job
-        inputFile = self.data_dir + '/' + conf['infile']
-        outputFile = self.data_dir + '/' + conf['outfile']
-        e = os.path.exists(inputFile)
-        if e == False:
-            raise IOError,"No input file"
-        splits = self.splitInput(inputFile, conf['split_size'], conf['className'])
-        conf['infile'] = inputFile
-        conf['outfile'] = outputFile
-        conf['splits'] = splits
-        job = Job(conf)
-        self.jobs.put_nowait(job)
-        print "Initialize Job: job_id: %s at %s" % (job.jobId, time.asctime(time.localtime(time.time())))
-        return 0
 
     def getJobStatus(self, job_id):
         job = self.processing_jobs[job_id]
@@ -61,109 +40,23 @@ class Master():
     def registerWorker(self, worker_address):
         self.worker_id += 1
         worker = {
-            "id": self.worker_id,
+            "worker_id": self.worker_id,
             "address": worker_address,
-            "mapper": 'Free',
-            "reducer": 'Free'
+            'num_slots': 5
         }
         # self.worker_list[self.worker_id] = worker
-        self.reportEvent('REGISTER_WORKER', worker)
-        self.worker_status_list[self.worker_id] = WorkerStatus(self.worker_id, worker_address, "RUNNING", None, None)
-        print "Worker %s %s registered at %s" % (
-            worker['id'], worker['address'], time.asctime(time.localtime(time.time())))
+        # self.reportEvent('REGISTER_WORKER', worker)
+        # self.worker_status_list[self.worker_id] = WorkerStatus(self.worker_id, worker_address, "RUNNING", None, None)
+        self.worker_list[worker['worker_id']] = worker
+        debug_print( "Worker %s %s registered at %s" % (
+            worker['worker_id'], worker['address'], time.asctime(time.localtime(time.time()))), self.debug)
         return self.worker_id
 
-    def getMapSlot(self):
-        for worker_id in self.worker_list.keys():
-            if self.worker_list[worker_id]['mapper'] == 'Free':
-                self.worker_list[worker_id]['mapper'] = 'Occupied'
-                return self.worker_list[worker_id]
+    def get_available_worker(self):
+        for worker_id, worker in self.worker_list.items():
+            if worker['num_slots'] > 0 :
+                return worker
         return None
-
-    def getReduceSlot(self):
-        for key in self.worker_list.keys():
-            if self.worker_list[key]['reducer'] == 'Free':
-                self.worker_list[key]['reducer'] = 'Occupied'
-                return self.worker_list[key]
-        return None
-
-    def getMapResultLocation(self, job_id):
-        locations = {}
-        # find corresponding map result
-        job = self.processing_jobs[job_id]
-        map_list = job.map_task_list
-        for key, task in map_list.items():
-            # task = map_list[i]
-            if task.state == 'FINISH':
-                locations[task.split_id] = task.worker
-        return locations
-
-    def assignTask(self, type, task_list):
-        for i in task_list.keys():
-            if task_list[i].state == 'NOT_ASSIGNED':
-                if type == 'mapper':
-                    # print " Get M Slot"
-                    worker = self.getMapSlot()
-                else:
-                    worker = self.getReduceSlot()
-                    # print " Get R Slot"
-
-                if worker is not None:
-                    # print "worker %s " %worker['id']
-                    # print "Task TYPE %s " %type
-
-                    task = task_list[i]
-                    self.task_id += 1
-                    task.task_id = self.task_id
-                    task.worker = worker
-                    # start task
-                    client = zerorpc.Client()
-                    client.connect('tcp://' + worker["address"])
-                    if type == 'mapper':
-                        task_dict = task.__dict__
-                        print "Assign mapper task %s on worker %s at %s " %(task.split_id , worker['id'],
-                            time.asctime(time.localtime(time.time())))
-                        try:
-                            ret = client.startMap(task_dict)
-                            if ret is not None:
-                                client.close()
-                        except zerorpc.LostRemote:
-                            ret = -1
-                            pass
-                        # print "Start Mapper OK %s on worker %s" %(task.split_id, worker['id'])
-
-                    else:
-                        task_dict = task.__dict__
-                        # print "Start Reducer task"
-                        print "Assign reducer task %s on worker %s at %s " %(task.partition_id , worker['id'],
-                            time.asctime(time.localtime(time.time())))
-                        try:
-                            ret = client.startReduce(task_dict)
-                            if ret is not None:
-                                client.close()
-                        except zerorpc.LostRemote:
-                            ret = -1
-                            pass
-                    if ret == 0:
-                        task.state = 'STARTING'
-                    else:
-                        print "Start %s task on %s failed" % (type, worker["address"])
-                        # worker[type] = "Free"
-                        status = {
-                                'worker_id': task.worker['id'],
-                                'task_type': type
-                                  }
-                        self.reportEvent('START_TASK_FAIL', status)
-
-    def isAllTasksFinished(self, task_list):
-        count = 0
-        for key in task_list.keys():
-            if task_list[key].state == 'FINISH':
-                count += 1
-        if count == len(task_list):
-            return True
-        else:
-            return False
 
     def jobScheduler(self):
         # print "enter scheduler : at %s" %time.asctime( time.localtime(time.time()) )
@@ -290,10 +183,6 @@ class Master():
                     print "Collect result failed at: ", time.asctime(time.localtime(time.time()))
             gevent.sleep(0)
 
-    def mergeData(self, data_list, className, data_dir):
-        collector = collect_data.Collect_data(className, className, data_dir)
-        collector.merge_data(data_list, className)
-        return
 
     def collectResults(self, reducer_list):
         data_list = []
@@ -344,18 +233,20 @@ class Master():
         while True:
             for worker_id in self.worker_status_list.keys():
                 #
-                workerStatus = self.worker_status_list[worker_id]
-                if workerStatus.num_heartbeat == workerStatus.num_callback:
-                    workerStatus.timeout_times += 1
-                    if workerStatus.timeout_times == 3:
-                        workerStatus.worker_status = 'DOWN'
-                        self.reportEvent('WORKER_DOWN', workerStatus)
+                status = self.worker_status_list[worker_id]
+                if status['num_heartbeat'] == status['num_callback']:
+                    status['timeout_times'] += 1
+                    if status['timeout_times'] == 3:
+                        status['worker_status'] = Worker_Status.DOWN
+                        self.reportEvent(Event.WORKER_DOWN, worker_id)
+                        debug_print("Report Worker Down: worker_id: %s at %s" % (
+                            worker_id, time.asctime(time.localtime(time.time()))), self.debug)
                         # print "Find worker down: worker_id: %s, ip: %s at %s" % (
                         #     workerStatus.worker_id, workerStatus.worker_address,
                         #     time.asctime(time.localtime(time.time())))
                 else:
-                    workerStatus.num_heartbeat = workerStatus.num_callback
-                    workerStatus.timeout_times = 0
+                    status['num_heartbeat'] = status['num_callback']
+                    status['timeout_times'] = 0
             gevent.sleep(2)
 
     def reportEvent(self, type, status):
@@ -363,34 +254,30 @@ class Master():
         self.event_queue.put_nowait(event)
 
     def updateWorkerStatus(self, worker_id, task_status_list):
-        # workerStatus = self.convertDictToWorkerStatus(workerStatus_dict)
-        # print " call back"
-        # check status
-        origin_status = self.worker_status_list[worker_id]
-        if origin_status is None:
-            # create this worker task if not exist
+        # update worker status
+        if self.worker_status_list[worker_id] is None:
+            # create this worker status if not exist
             status = {
                 'worker_status': Worker_Status.UP,
-                'task_status_list':
+                'num_callback': 0,
+                'timeout_times': 0,
+                'num_heartbeat': 0,
+                'task_status_list': task_status_list
             }
-        if origin_status['worker_status'] != 'Down':
-            origin_status['task_status_list'] = task_status_list
-            for key, status in task_status_list.items():
+            self.worker_status_list[worker_id] = status
+        else:
+            origin_status = self.worker_status_list[worker_id]
+            if origin_status['worker_status'] != 'Down':
+                origin_status['task_status_list'] = task_status_list
+                origin_status['num_callback'] = random.random()
+        # check status
+        for key, status in task_status_list.items():
                 if status == Status.FINISH :
-
-
-            if workerStatus.mapper_status is not None:
-                # check task state
-                if workerStatus.mapper_status.changeToFinish == True:
-                    # print "Mapper finish key: %d worker : %d" %(workerStatus.mapper_status.split_id, workerStatus.worker_id)
-                    self.reportEvent('MAPPER_FINISHED', workerStatus)
-
-            if workerStatus.reducer_status is not None:
-                if workerStatus.reducer_status.changeToFinish == True:
-                    self.reportEvent('REDUCER_FINISHED', workerStatus)
-        self.worker_status_list[workerStatus.worker_id].mapper_status = workerStatus.mapper_status
-        self.worker_status_list[workerStatus.worker_id].reducer_status = workerStatus.reducer_status
-        self.worker_status_list[workerStatus.worker_id].num_callback = random.random()
+                    if self.worker_list[worker_id] is not None :
+                        self.worker_list[worker_id]['num_slots'] += 1
+                    self.reportEvent(Event.FINISH_TASK, key)
+                    debug_print("Report Task Finish: worker_id: %s task_id: %s at %s" % (
+                    worker_id, key, time.asctime(time.localtime(time.time()))), self.debug)
         return 0
 
     def run(self):
