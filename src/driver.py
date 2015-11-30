@@ -1,6 +1,5 @@
 import gevent
 import zerorpc
-from src.master import Master
 from src.rdd.rdd import WideRDD, TextFile, GroupByKey, Map, Join
 from src.task import Task
 from src.util import util_pickle
@@ -14,15 +13,13 @@ class SparkDriver:
         # task_list: {task: status}
         self.task_list = {}
         # task_node_table: {worker_id: [tasks]}
-        self.task_node_table = {}
-        self.worker_status_list = {}
-        self.worker_list = {}
+        self.task_node_table = {} 
         self.is_finished = False
         self.master_addr = None
 
     def do_drive(self, serialized_rdd, action_name, func):
         last_rdd = util_pickle.unpickle_object(serialized_rdd)
-        self.master_addr=last_rdd.config['master_addr']
+        self.master_addr = last_rdd._config['master_addr']
         lineage = last_rdd.get_lineage()
 
         # generate graph-table and stages
@@ -40,10 +37,12 @@ class SparkDriver:
     def assign_task(self, task):
         """Assign the stages list to Master Node,
            return the last rdd that action should be applied"""
-        worker_info = self.master.get_available_worker()
+        master=zerorpc.Client()
+        master.connect("tcp://{0}".format(self.master_addr))
+        worker_info = master.get_available_worker()
         while worker_info is None:
             gevent.sleep(1)
-            worker_info = self.get_available_worker()
+            worker_info = master.get_available_worker()
         if isinstance(task.input_source, list):
             task.input_source['worker_addr'] = worker_info['address']
         task.worker = worker_info
@@ -92,7 +91,7 @@ class SparkDriver:
                 # TextFile data source
                 input_source = str(cur_par_id)
             elif isinstance(start_rdd, WideRDD):
-                # Shuffle data source
+                # Shuffle data source\
                 input_source = []
                 if not isinstance(start_rdd.parent, list):
                     parents = [start_rdd.parent]
@@ -105,7 +104,8 @@ class SparkDriver:
                         for elem in tar_list:
                             if int(elem.split('_')[1]) == cur_par_id:
                                 # elem_dict: {'parent_id': rdd.id, 'partition_id': str(id), worker_addr: 'XXXX:XX'}
-                                elem_dict = {'parent_id': parent_rdd.id, 'partition_id': elem.split('_')[0]}
+                                elem_dict = {'task_id': "{0}_{1}".format(cur_stage_id, cur_par_id),
+                                             'partition_id': elem.split('_')[0]}
                                 input_source.append(elem_dict)
             else:
                 input_source = None
@@ -121,12 +121,17 @@ class SparkDriver:
             if self.last_tasks[task] is not 'Finished':
                 return
         self.is_finished = True
+        master=zerorpc.Client()
+        master.connect('tcp://{0}'.format(self.master_addr))
+        self.result=[]
+        for i in range(0, len(self.last_tasks)):
+            self.result += master.get_rdd_result(self.last_tasks[i].task_id, i)
 
     def get_available_worker(self):
         pass
 
-    def do_reduce(self, rdd, func):
+    def do_reduce(self, serialized_rdd, func):
         pass
 
-    def do_collect(self, rdd, func=None):
+    def do_collect(self, serialized_rdd):
         pass
