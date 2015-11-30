@@ -14,15 +14,15 @@ class SparkDriver:
         # task_list: {task: status}
         self.task_list = {}
         # task_node_table: {worker_id: [tasks]}
-        self.task_node_table={}
-        self.worker_status_list={}
-        self.worker_list={}
+        self.task_node_table = {}
+        self.worker_status_list = {}
+        self.worker_list = {}
         self.is_finished = False
-        self.master=Master()
-        gevent.spawn(self.master.run)
+        self.master_addr = None
 
     def do_drive(self, serialized_rdd, action_name, func):
         last_rdd = util_pickle.unpickle_object(serialized_rdd)
+        self.master_addr=last_rdd.config['master_addr']
         lineage = last_rdd.get_lineage()
 
         # generate graph-table and stages
@@ -51,10 +51,10 @@ class SparkDriver:
             self.task_node_table[worker_info["woker_id"]].append(task)
         else:
             self.task_node_table[worker_info["woker_id"]] = [task]
-        worker=zerorpc.Client()
+        worker = zerorpc.Client()
         worker.connect("tcp://".format(worker_info['address']))
         worker.startTask(util_pickle.pickle_object(task))
-        self.task_list[task]="Assigned"
+        self.task_list[task] = "Assigned"
 
     def init_tasks(self, lineage):
         """
@@ -73,7 +73,7 @@ class SparkDriver:
             prev = rdd
 
         # Handle the last stage
-        self.last_tasks=self.gen_stage_tasks(prev, stage_start, cur_stage_id)
+        self.last_tasks = self.gen_stage_tasks(prev, stage_start, cur_stage_id)
         tasks.update(self.last_tasks)
         self.task_list = tasks
 
@@ -114,14 +114,13 @@ class SparkDriver:
 
     def finish_task(self, task_id):
         for task in self.task_list.keys():
-            if task.task_id==task_id:
-                self.task_list[task]="Finished"
+            if task.task_id == task_id:
+                self.task_list[task] = "Finished"
                 break
         for task in self.last_tasks.keys():
             if self.last_tasks[task] is not 'Finished':
                 return
-        self.is_finished=True
-
+        self.is_finished = True
 
     def get_available_worker(self):
         pass
@@ -131,7 +130,3 @@ class SparkDriver:
 
     def do_collect(self, rdd, func=None):
         pass
-
-
-
-
