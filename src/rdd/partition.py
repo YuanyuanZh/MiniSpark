@@ -28,23 +28,22 @@ class HashPartition(object):
 
 class RangePartition(Partition):
 
-    def __init__(self,filename,num_partition):
-        super(RangePartition,self).__init__()
+    def __init__(self, filename, split_size):
+        super(RangePartition, self).__init__()
         self.filename = filename
-        self.num_partition = num_partition
+        self.split_size = split_size
 
     def partition(self):
         rst = {}
         file_object = open(self.filename)
-        file_object.seek(0,2)
+        file_object.seek(0, 2)
         end = file_object.tell()
-        partition_size = end / self.num_partition
         offset = 0
         partition_id = 0
         while offset < end:
-            rst[partition_id] = [offset,partition_size]
+            rst[partition_id] = [offset, self.split_size]
             partition_id += 1
-            offset += partition_size
+            offset += self.split_size
         return rst
 
 
