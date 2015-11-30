@@ -1,18 +1,15 @@
 import zerorpc
 from src.rdd import partition
 from src.util import util_pickle
+from src.util.util_zerorpc import get_client, execute_command
 
 
 class RDD(object):
-    default = {}
-    default['num_partition_RBK'] = 2
-    default['num_partition_GBK'] = 2
-    default['split_size'] = 128
-    current_id = 0
+    _config = {}
+    _current_id = 0
 
-    def __init__(self, config = default):
+    def __init__(self):
         self.lineage = None
-        self.config = config
 
     def lineage(self):
         pass
@@ -25,7 +22,7 @@ class RDD(object):
 
     def get_lineage(self):
         lineage = self.parent.get_lineage()
-        lineage += [(self,self.id)]
+        lineage += [(self, self.id)]
         self.lineage = lineage
         return lineage
 
@@ -42,42 +39,49 @@ class RDD(object):
         return len(self.collect())
 
     def reduce(self, func):
-        client=zerorpc.Client()
-        driver=client.connect(self.config["driver_addr"])
-        seialized_rdd= util_pickle.pickle_object(self)
+        client = zerorpc.Client()
+        driver = client.connect(self._config["driver_addr"])
+        seialized_rdd = util_pickle.pickle_object(self)
         return driver.do_drive(seialized_rdd)
 
-    def save(self,path,output_name):
+    def save(self, path, output_name):
         pass
 
-    def get_data(self,address,key):
-        #todo ZeroRPC
-        if len(key) == 1:
-            return self.get()
-        else:
-            data = self.get()
-            hash_partitioner = partition.HashPartition(data,len(self.partitions()[0]))
-            partitioned_date = hash_partitioner.partition()
-            return partitioned_date[int(key[1])]
+    def partition_intermediate_rst(self, data, num_partitions):
+        if num_partitions is not None:
+            hash_partitioner = partition.HashPartition(data, num_partitions)
+            return hash_partitioner.partition()
+        return data
+
+
+class Streaming(RDD):
+    def __init__(self):
+        super(Streaming, self).__init__()
+
+    def get(self, input_source):
+        job_id = input_source['job_id']
+        partition_id = input_source['partition_id']
+        return input_source['streaming_data'][job_id][partition_id]
 
 
 class NarrowRDD(RDD):
-    def __int__(self,parent):
-        super(NarrowRDD,self).__init__()
+    def __int__(self, parent):
+        super(NarrowRDD, self).__init__()
         self.parent = parent
 
     def partitions(self):
         partitions = self.parent.partitions()
         self.num_partitions = self.parent.num_partitions
-        index = self.lineage.index((self,self.id))
-        if index+1 < len(self.lineage):
-            next_op = self.lineage[index+1]
+        index = self.lineage.index((self, self.id))
+        if index + 1 < len(self.lineage):
+            next_op = self.lineage[index + 1]
             if isinstance(next_op[0], WideRDD):
                 new_partitions = []
                 for i in range(self.num_partitions):
                     sub = []
                     for j in range(next_op[0].num_partitions):
-                        sub.append(str(i)+'_'+str(j))
+                        self.num_rst_partitions = next_op[0].num_partitions
+                        sub.append(str(i) + '_' + str(j))
                     new_partitions.append(sub)
                 partitions = new_partitions
         return partitions
@@ -88,77 +92,81 @@ class NarrowRDD(RDD):
 
 class WideRDD(RDD):
     def __int__(self):
-        super(WideRDD,self).__init__()
+        super(WideRDD, self).__init__()
 
     def partitions(self):
         partitions = []
-        index = self.lineage.index((self,self.id))
-        if index+1 < len(self.lineage):
-            next_op = self.lineage[index+1]
+        index = self.lineage.index((self, self.id))
+        if index + 1 < len(self.lineage):
+            next_op = self.lineage[index + 1]
             if isinstance(next_op[0], WideRDD):
                 for i in range(self.num_partitions):
                     sub = []
                     for j in range(next_op[0].num_partitions):
-                        sub.append(str(i)+'_'+str(j))
+                        self.num_rst_partitions = next_op[0].num_partitions
+                        sub.append(str(i) + '_' + str(j))
                     partitions.append(sub)
             else:
                 for i in range(self.num_partitions):
-                    partitions.append([str(i)+'_'+str(i)])
+                    partitions.append([str(i) + '_' + str(i)])
         else:
             for i in range(self.num_partitions):
-                partitions.append([str(i)+'_'+str(i)])
+                partitions.append([str(i) + '_' + str(i)])
         return partitions
 
     def partitioner(self):
         return 'HashPartition'
 
+    def shuffle(self, input_source):
+        result = []
+        for partition in input_source:
+            client = get_client(partition['worker_addr'])
+            result += execute_command(client, client.get_rdd_result,
+                                      partition['parent_id'],
+                                      partition['partition_id'])
+        return result
+
 
 class TextFile(RDD):
-
     def __init__(self, filename):
         super(TextFile, self).__init__()
         self.filename = filename
-        self.id = "TextFile_{0}".format(TextFile.current_id)
-        TextFile.current_id += 1
+        self.id = "TextFile_{0}".format(TextFile._current_id)
+        TextFile._current_id += 1
         self.data = None
-        self.file_split_info = None
-        self.num_partitions = 0
+        self.file_split_info = partition.RangePartition(self.filename, self._config['split_size']).partition()
+        self.num_partitions = len(self.file_split_info.values())
+        self.num_rst_partitions = None
 
     def get_lineage(self):
-        lineage =[(self,self.id)]
+        lineage = [(self, self.id)]
         self.lineage = lineage
         return lineage
 
     def partitions(self):
-        self.file_split_info = partition.RangePartition(self.filename,self.config['split_size']).partition()
-        self.num_partitions = len(self.file_split_info.values())
         partitions = []
-        index = self.lineage.index((self,self.id))
-        next_op = self.lineage[index+1]
+        index = self.lineage.index((self, self.id))
+        next_op = self.lineage[index + 1]
         if isinstance(next_op[0], WideRDD):
             for i in range(self.num_partitions):
                 sub = []
                 for j in range(next_op[0].num_partitions):
-                    sub.append(str(i)+'_'+str(j))
+                    self.num_rst_partitions = next_op[0].num_partitions
+                    sub.append(str(i) + '_' + str(j))
                 partitions.append(sub)
         else:
             for i in range(self.num_partitions):
-                partitions.append([str(i)+'_'+str(i)])
+                partitions.append([str(i) + '_' + str(i)])
         return partitions
 
     def get(self, input_source):
         partition_id = input_source[0]['partition_id']
         if not self.data:
             f = open(self.filename)
-            self.data = self.read_file(f,self.file_split_info[int(partition_id)])
+            self.data = self.read_file(f, self.file_split_info[int(partition_id)])
             f.close()
+        self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
-        # if self.index == len(self.lines):
-        #     return None
-        # else:
-        #     line = self.lines[self.index]
-        #     self.index += 1
-        #     return line
 
     def read_file(self, f, start_end):
         f.seek(0, 2)
@@ -179,25 +187,16 @@ class TextFile(RDD):
         return rst
 
 
-class Streaming(RDD):
-    def __init__(self):
-        pass
-
-    def get(self, input_source):
-        partition_id = input_source['partition_id']
-        return input_source['streaming_data'][partition_id]
-
-
 class Map(NarrowRDD):
-
     def __init__(self, parent, func):
-        super(Map,self).__init__()
+        super(Map, self).__init__()
         self.parent = parent
         self.func = func
-        self.id = "Map_{0}".format(Map.current_id)
-        Map.current_id += 1
+        self.id = "Map_{0}".format(Map._current_id)
+        Map._current_id += 1
         self.num_partitions = self.parent.num_partitions
-        self.data = []
+        self.num_rst_partitions = None
+        self.data = None
 
     def get(self, input_source):
         if not self.data:
@@ -209,18 +208,19 @@ class Map(NarrowRDD):
             for e in element:
                 element_new.append(self.func(e))
                 self.data = element_new
+        self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
 
 
 class Filter(NarrowRDD):
-    
     def __init__(self, parent, func):
-        super(Filter,self).__init__()
+        super(Filter, self).__init__()
         self.parent = parent
         self.func = func
-        self.id = "Filter_{0}".format(Filter.current_id)
-        Filter.current_id += 1
+        self.id = "Filter_{0}".format(Filter._current_id)
+        Filter._current_id += 1
         self.num_partitions = self.parent.num_partitions
+        self.num_rst_partitions = None
         self.data = None
 
     def get(self, input_source):
@@ -234,21 +234,22 @@ class Filter(NarrowRDD):
                     if self.func(e):
                         rst.append(e)
                 self.data = rst
+        self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
 
 
 class FlatMap(NarrowRDD):
-
     def __init__(self, parent, func):
-        super(FlatMap,self).__init__()
+        super(FlatMap, self).__init__()
         self.parent = parent
         self.func = func
-        self.id = "FlatMap_{0}".format(FlatMap.current_id)
-        FlatMap.current_id +=1
+        self.id = "FlatMap_{0}".format(FlatMap._current_id)
+        FlatMap._current_id += 1
         self.num_partitions = self.parent.num_partitions
+        self.num_rst_partitions = None
         self.data = None
 
-    def get(self,input_source):
+    def get(self, input_source):
         if not self.data:
             element = self.parent.get(input_source)
             if element == None:
@@ -259,27 +260,29 @@ class FlatMap(NarrowRDD):
                     rst = self.func(e)
                     new_element += rst
                 self.data = new_element
+        self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
 
 
 class Join(NarrowRDD):
     def __init__(self, parent):
-        super(Join,self).__init__()
+        super(Join, self).__init__()
         self.parent = parent
-        self.id = "Join_{0}".format(Join.current_id)
-        Join.current_id += 1
-        self.num_partitions = 1
+        self.id = "Join_{0}".format(Join._current_id)
+        Join._current_id += 1
+        self.num_partitions = self.parent[0].num_partitions
+        self.num_rst_partitions = None
         self.data = None
 
     def get_lineage(self):
         lineage = []
         for p in self.parent:
             lineage += p.get_lineage()
-        lineage += [(self,self.id)]
+        lineage += [(self, self.id)]
         self.lineage = lineage
         return lineage
 
-    def get(self,input_source):
+    def get(self, input_source):
         if not self.data:
             element1 = self.parent[0].get([input_source[0]])
             element2 = self.parent[1].get([input_source[1]])
@@ -288,68 +291,68 @@ class Join(NarrowRDD):
             else:
                 rst = []
                 for i in range(len(element1)):
-                    rst.append((element1[i][0],(element1[i][1],element2[i][1])))
+                    rst.append((element1[i][0], (element1[i][1], element2[i][1])))
                 self.data = rst
+        self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
 
     def partitions(self):
         partitions = self.parent[0].partitions()
         self.num_partitions = self.parent[0].num_partitions
-        index = self.lineage.index((self,self.id))
-        if index+1 < len(self.lineage):
-            next_op = self.lineage[index+1]
+        index = self.lineage.index((self, self.id))
+        if index + 1 < len(self.lineage):
+            next_op = self.lineage[index + 1]
             if isinstance(next_op[0], WideRDD):
                 new_partitions = []
                 for i in range(self.num_partitions):
                     sub = []
                     for j in range(next_op[0].num_partitions):
-                        sub.append(str(i)+'_'+str(j))
+                        self.num_rst_partitions = next_op[0].num_partitions
+                        sub.append(str(i) + '_' + str(j))
                     new_partitions.append(sub)
                 partitions = new_partitions
         return partitions
 
 
 class MapValue(NarrowRDD):
-    def __init__(self, parent,func):
-        super(MapValue,self).__init__()
+    def __init__(self, parent, func):
+        super(MapValue, self).__init__()
         self.parent = parent
         self.func = func
-        self.id = "MapValue_{0}".format(MapValue.current_id)
-        MapValue.current_id += 1
+        self.id = "MapValue_{0}".format(MapValue._current_id)
+        MapValue._current_id += 1
+        self.num_partitions = self.parent.num_partitions
+        self.num_rst_partitions = None
         self.data = None
 
-    def get(self):
+    def get(self, input_source):
         if not self.data:
-            element = self.parent.get()
+            element = self.parent.get(input_source)
             if element == None:
                 return None
             else:
                 rst = []
                 for e in element:
-                    rst.append((e[0],self.func(e[1])))
+                    rst.append((e[0], self.func(e[1])))
                 self.data = rst
+        self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
 
 
 class GroupByKey(WideRDD):
-
     def __init__(self, parent):
-        super(GroupByKey,self).__init__()
+        super(GroupByKey, self).__init__()
         self.parent = parent
-        self.id = "GroupByKey_{0}".format(GroupByKey.current_id)
-        GroupByKey.current_id += 1
-        self.num_partitions = self.config['num_partition_GBK']
+        self.id = "GroupByKey_{0}".format(GroupByKey._current_id)
+        GroupByKey._current_id += 1
+        self.num_partitions = self._config['num_partition_GBK']
+        self.num_rst_partitions = None
         self.data = None
 
-    # def get_lineage(self):
-    #     lineage = self.parent.get_lineage()
-    #     lineage.append((self,self.id))
-    #     self.lineage = lineage
-    #     return lineage
-
-    def get(self):
+    def get(self, input_source):
         if not self.data:
-            element = self.parent.get()
+            # element = self.parent.get(input_source)
+            element = self.shuffle(input_source)
             if element == None:
                 return None
             else:
@@ -363,32 +366,28 @@ class GroupByKey(WideRDD):
                         element_new[k] = [v]
                 rst = []
                 for key in element_new.keys():
-                    rst.append((key,element_new.get(key)))
+                    rst.append((key, element_new.get(key)))
                 self.data = rst
+        self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
 
 
 class ReduceByKey(WideRDD):
-
-    def __init__(self, parent,func):
-        super(ReduceByKey,self).__init__()
+    def __init__(self, parent, func):
+        super(ReduceByKey, self).__init__()
         self.parent = parent
-        self.id = "ReduceByKey_{0}".format(ReduceByKey.current_id)
-        ReduceByKey.current_id += 1
+        self.id = "ReduceByKey_{0}".format(ReduceByKey._current_id)
+        ReduceByKey._current_id += 1
         self.func = func
-        self.num_partitions = self.config['num_partition_RBK']
+        self.num_partitions = self._config['num_partition_RBK']
+        self.num_rst_partitions = None
         self.data = None
 
-    # def get_lineage(self):
-    #     lineage = self.parent.get_lineage()
-    #     lineage.append((self,self.id))
-    #     self.lineage = lineage
-    #     return lineage
-
-    def get(self):
+    def get(self, input_source):
         if not self.data:
             collect = {}
-            element = self.parent.get()
+            # element = self.parent.get(input_source)
+            element = self.shuffle(input_source)
             if element == None:
                 return None
             else:
@@ -400,11 +399,7 @@ class ReduceByKey(WideRDD):
             rst = []
             for key in collect.keys():
                 v = collect.get(key)
-                rst.append((key, reduce(self.func,v)))
+                rst.append((key, reduce(self.func, v)))
             self.data = rst
+        self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
-
-
-
-
-
