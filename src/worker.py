@@ -8,10 +8,11 @@ import time
 import json
 from gevent.queue import Queue
 from util.util_debug import *
+from util.util_enum import *
 
 
 class Worker():
-    def __init__(self, master_address, worker_address=None):
+    def __init__(self, master_address, worker_address, debug):
         self.id = None
         self.master_address = master_address
         if (worker_address is None):
@@ -24,6 +25,7 @@ class Worker():
         self.current_mapper = None
         self.current_reducer = None
         self.TaskQueue = Queue()
+        self.debug = debug
 
     def getMyAddress(self):
         try:
@@ -50,9 +52,14 @@ class Worker():
         input = StringIO.StringIO(partitionStr)
         unpickler = pickle.Unpickler(input)
         partition = unpickler.load()
-        result = partition.get()
         key = partition.rdd_id+":"+partition.partition_id
-        self.all_task_list[key] = {"status": }
+        self.all_task_list[key] = {"status": Status.START,
+                                   "data": None
+                                   }
+        result = partition.get()
+        self.all_task_list[key] = {"status": Status.FINISH,
+                                   "data": result
+                                   }
 
 
     def register(self):
@@ -62,7 +69,7 @@ class Worker():
         if self.id is not None:
             client.close()
             addr = self.worker_address
-            debug_print("worker %d  %s registered at %s " % (self.id, addr, time.asctime(time.localtime(time.time()))))
+            debug_print("worker %d  %s registered at %s " % (self.id, addr, time.asctime(time.localtime(time.time()))), self.debug)
 
 
     def startTask(self, task):
@@ -72,44 +79,21 @@ class Worker():
     def TaskManager(self):
         while True:
             while not self.TaskQueue.empty():
-                mapperTask = self.TaskQueue.get()
+                task = self.TaskQueue.get()
                 # print "Create map thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
-                thread = gevent.spawn(self.mapper, mapperTask)
-                print "Mapper created: Key: %d at %s" % (
-                        mapperTask.split_id, time.asctime(time.localtime(time.time())))
+                thread = gevent.spawn(self.runPartition, task)
+                debug_print("Task created: Key: %d at %s" % (
+                        task.partition_id, time.asctime(time.localtime(time.time()))), self.debug)
+                print
             gevent.sleep(0)
 
     def heartbeat(self):
         while True:
-            Local_current_mapper = self.current_mapper
-            Local_current_Reducer = self.current_reducer
-            if self.current_mapper is not None:
-                status_mapper = MapperStatus(self.current_mapper.job_id, self.current_mapper.split_id,
-                                             self.current_mapper.task_id, self.current_mapper.state,
-                                             self.current_mapper.progress, self.current_mapper.changeToFinish)
-                status_mapper_dict = status_mapper.__dict__
-            else:
-                status_mapper = None
-                status_mapper_dict = None
-            if self.current_reducer is not None:
-                status_reducer = ReducerStatus(self.current_reducer.job_id, self.current_reducer.partition_id,
-                                               self.current_reducer.task_id, self.current_reducer.state,
-                                               self.current_reducer.progress, self.current_reducer.changeToFinish)
-                status_reducer_dict = status_reducer.__dict__
-            else:
-                status_reducer = None
-                status_reducer_dict = None
-            status = WorkerStatus(self.id, self.worker_address, "RUNNING", status_mapper, status_reducer)
-            status_dict = {
-                'worker_id': self.id,
-                'worker_address': self.worker_address,
-                'worker_status': 'RUNNING',
-                'num_heartbeat': 0,
-                'num_callback': 0,
-                'timeout_times': 0,
-                'mapper_status': status_mapper_dict,
-                'reducer_status': status_reducer_dict
-            }
+            #traverse task list and report processing tasks
+            task_status_list = {}
+            for key, value in self.all_task_list.items():
+                if value['status'] != Status.FINISH_REPORTED:
+                    task_status_list[key] = value['status']
             # print "send status"
             client = zerorpc.Client()
             client.connect('tcp://' + self.master_address)
@@ -117,7 +101,9 @@ class Worker():
             # print "Worker update status UPdate: worker_id: %s, mapper key: %s at %s" % (
             #     self.id, status.mapper_status.split_id, time.asctime(time.localtime(time.time())))
             try:
-                ret = client.updateWorkerStatus(status_dict)
+                debug_print("Worker update task status: worker_id: %s at %s" % (
+                    self.id, time.asctime(time.localtime(time.time()))), self.debug)
+                ret = client.updateWorkerStatus(self.id, task_status_list)
                 if ret is not None:
                     client.close()
                     if ret == 0:
@@ -153,9 +139,10 @@ class Worker():
 
 if __name__ == '__main__':
     master_address = sys.argv[1]
-    if len(sys.argv) == 3:
-        worker_address = sys.argv[2]
-    else:
-        worker_address = None
-    worker = Worker(master_address, worker_address)
+    worker_address = sys.argv[2]
+    if len(sys.argv) == 4:
+        debug = sys.argv[3]
+    elif len(sys.argv) == 3:
+        debug = True
+    worker = Worker(master_address, worker_address, debug)
     worker.run()
