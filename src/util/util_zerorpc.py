@@ -15,3 +15,9 @@ def execute_command(client, func, *args):
         return None
     finally:
         client.close()
+
+
+def start_server(ip, object):
+    server = zerorpc.Server(object)
+    server.bind("tcp://{0}".format(ip))
+    server.run()
