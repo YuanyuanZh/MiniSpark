@@ -8,6 +8,7 @@ import time
 from gevent.queue import Queue
 from util.util_debug import *
 from util.util_enum import *
+from util.util_zerorpc import *
 
 
 class Worker():
@@ -65,28 +66,41 @@ class Worker():
         master.bind('tcp://' + addr)
         master.run()
 
-    def runPartition(self, partitionStr):
-        input = StringIO.StringIO(partitionStr)
+    def runPartition(self, taskStr):
+        input = StringIO.StringIO(taskStr)
         unpickler = pickle.Unpickler(input)
-        partition = unpickler.load()
-        key = partition.rdd_id+":"+partition.partition_id
+        task = unpickler.load()
+        key = task.task_id
+        # key = partition.rdd_id+":"+partition.partition_id
         self.all_task_list[key] = {"status": Status.START,
                                    "data": None
                                    }
-        result = partition.get()
+        result = task.last_rdd.get(task.input_source)
         self.all_task_list[key] = {"status": Status.FINISH,
                                    "data": result
                                    }
 
+    def get_rdd_result(self, task_id, partition_id):
+        if self.all_task_list.has_key(task_id):
+            data =  self.all_task_list[task_id]['data']
+            if data is not None:
+                if partition_id is None :
+                    return data
+                else :
+                    if data.has_key(partition_id):
+                        return data[partition_id]
+        return None
 
     def register(self):
-        client = zerorpc.Client()
-        client.connect('tcp://' + self.master_address)
-        self.id = client.registerWorker(self.worker_address)
-        if self.id is not None:
-            client.close()
-            addr = self.worker_address
-            debug_print("worker %d  %s registered at %s " % (self.id, addr, time.asctime(time.localtime(time.time()))), self.debug)
+        while self.id is None :
+            client = get_client(self.master_address)
+            self.id = execute_command(client, client.registerWorker,self.worker_address)
+            # self.id = client.registerWorker(self.worker_address)
+            if self.id is not None:
+                debug_print("worker %d  %s registered at %s " % (self.id, self.worker_address, time.asctime(time.localtime(time.time()))), self.debug)
+                break
+            else :
+                gevent.sleep(2)
 
 
     def startTask(self, task):
@@ -106,30 +120,31 @@ class Worker():
 
     def heartbeat(self):
         while True:
-            #traverse task list and report processing tasks
-            task_status_list = {}
-            for key, value in self.all_task_list.items():
-                if value['status'] != Status.FINISH_REPORTED:
-                    task_status_list[key] = value['status']
-            # print "send status"
-            client = zerorpc.Client()
-            client.connect('tcp://' + self.master_address)
-            # if status.mapper_status is not None:
-            # print "Worker update status UPdate: worker_id: %s, mapper key: %s at %s" % (
-            #     self.id, status.mapper_status.split_id, time.asctime(time.localtime(time.time())))
-            try:
-                debug_print("Worker update task status: worker_id: %s at %s" % (
-                    self.id, time.asctime(time.localtime(time.time()))), self.debug)
-                ret = client.updateWorkerStatus(self.id, task_status_list)
-                if ret is not None:
-                    client.close()
-                    if ret == 0:
-                        for key, value in self.all_task_list.items():
-                            if value['status'] == Status.FINISH:
-                                value['status'] = Status.FINISH_REPORTED
-            except  zerorpc.LostRemote:
-                print "RPC error: lost remote"
-                pass
+            if self.id is not None:
+                #traverse task list and report processing tasks
+                task_status_list = {}
+                for key, value in self.all_task_list.items():
+                    if value['status'] != Status.FINISH_REPORTED:
+                        task_status_list[key] = value['status']
+                # print "send status"
+                client = zerorpc.Client()
+                client.connect('tcp://' + self.master_address)
+                # if status.mapper_status is not None:
+                # print "Worker update status UPdate: worker_id: %s, mapper key: %s at %s" % (
+                #     self.id, status.mapper_status.split_id, time.asctime(time.localtime(time.time())))
+                try:
+                    debug_print("Worker update task status: worker_id: %s at %s" % (
+                        self.id, time.asctime(time.localtime(time.time()))), self.debug)
+                    ret = client.updateWorkerStatus(self.id, task_status_list)
+                    if ret is not None:
+                        client.close()
+                        if ret == 0:
+                            for key, value in self.all_task_list.items():
+                                if value['status'] == Status.FINISH:
+                                    value['status'] = Status.FINISH_REPORTED
+                except  zerorpc.LostRemote:
+                    print "RPC error: lost remote"
+                    pass
             gevent.sleep(2)
 
     def run(self):
@@ -146,8 +161,9 @@ if __name__ == '__main__':
     master_address = sys.argv[1]
     worker_address = sys.argv[2]
     if len(sys.argv) == 4:
-        debug = sys.argv[3]
+        if sys.argv[3] == 'debug':
+            debug = True
     elif len(sys.argv) == 3:
-        debug = True
+        debug = False
     worker = Worker(master_address, worker_address, debug)
     worker.run()

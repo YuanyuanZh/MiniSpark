@@ -13,12 +13,13 @@ from util.util_enum import *
 from util.util_debug import *
 
 class Master():
-    def __init__(self, port):
+    def __init__(self, port, debug):
         self.port = port
         self.worker_list = {}
         self.worker_id = -1
         self.worker_status_list = {}
         self.event_queue = Queue()
+        self.debug = debug
 
 
     def registerWorker(self, worker_address):
@@ -136,12 +137,14 @@ class Master():
             gevent.sleep(2)
 
     def reportEvent(self, type, status):
-        event = Event(type, status)
+        event = {'type' : type,
+                 'status': status
+                 }
         self.event_queue.put_nowait(event)
 
     def updateWorkerStatus(self, worker_id, task_status_list):
         # update worker status
-        if self.worker_status_list[worker_id] is None:
+        if self.worker_status_list.has_key(worker_id) == False:
             # create this worker status if not exist
             status = {
                 'worker_status': Worker_Status.UP,
@@ -187,9 +190,10 @@ class Master():
 if __name__ == '__main__':
     port = sys.argv[1]
     if len(sys.argv) == 3:
-        debug = sys.argv[2]
+        if sys.argv[2] == 'debug':
+            debug = True
     elif len(sys.argv) == 2:
-        debug = True
+        debug = False
     master = Master(port, debug)
     master.run()
     # rpc_server = zerorpc.Server(master)
