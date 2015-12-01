@@ -123,8 +123,10 @@ class Master():
                     status['timeout_times'] += 1
                     if status['timeout_times'] == 3:
                         status['worker_status'] = Worker_Status.DOWN
-                        if self.worker_list[worker_id] is not None :
-                            self.worker_list[worker_id]['num_slots'] == 0
+                        if self.worker_list.has_key(worker_id) :
+                            if self.worker_list[worker_id] is not None :
+                                del self.worker_list[worker_id]
+                                # self.worker_list[worker_id]['num_slots'] == 0
                         self.reportEvent(Event.WORKER_DOWN, worker_id)
                         debug_print("Report Worker Down: worker_id: %s at %s" % (
                             worker_id, time.asctime(time.localtime(time.time()))), self.debug)
