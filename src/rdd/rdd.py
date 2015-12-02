@@ -1,4 +1,5 @@
 import zerorpc
+from src.driver import SparkDriver
 from src.rdd import partition
 from src.util import util_pickle
 from src.util.util_zerorpc import get_client, execute_command
@@ -26,29 +27,21 @@ class RDD(object):
         self.lineage = lineage
         return lineage
 
-    def collect(self, driver):
-        client = get_client(RDD._config['driver_addr'])
-        return execute_command(client, client.do_drive,
-                               util_pickle.pickle_object(self),
-                               'collect',
-                               None)
+    def collect(self):
+        driver=SparkDriver._master.get_master().produce_driver()
+        driver.do_drive(self, "collect")
 
-    def count(self):
-        client = get_client(RDD._config['driver_addr'])
-        return execute_command(client, client.do_drive,
-                               util_pickle.pickle_object(self),
-                               'count',
-                               None)
+    def count(self, driver):
+        driver=SparkDriver._master.get_master().produce_driver()
+        driver.do_drive(self, "count")
 
-    def reduce(self, func):
-        client = get_client(RDD._config['driver_addr'])
-        return execute_command(client, client.do_drive,
-                               util_pickle.pickle_object(self),
-                               'reduce',
-                               func)
+    def reduce(self, driver, func):
+        driver=SparkDriver._master.get_master().produce_driver()
+        driver.do_drive(self, "reduce", func)
 
-    def save(self, path, output_name):
-        pass
+    def save(self, driver, output_name):
+        driver=SparkDriver._master.get_master().produce_driver()
+        driver.do_drive(self,"save", output_name)
 
     def partition_intermediate_rst(self, data, num_partitions):
         if num_partitions is not None:

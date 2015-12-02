@@ -193,9 +193,13 @@ class Master():
         # print "rpc run"
 
     def get_job(self, job):
+        #TODO make a dict {job_id: client_info} and Gevent
         self.job_list[self.job_id] = unpickle_object(job)
-        self.job_list[self.job_id].run(SparkDriver())
+        self.job_list[self.job_id].run()
         job += 1
+
+    def produce_new_driver(self):
+        return SparkDriver()
 
 if __name__ == '__main__':
     status = Worker_Status.UP
@@ -206,6 +210,7 @@ if __name__ == '__main__':
     elif len(sys.argv) == 2:
         debug = False
     master = Master(port, debug)
+    #SparkDriver._master = master
     master.run()
     # rpc_server = zerorpc.Server(master)
     # addr = "tcp://0.0.0.0:" + port
