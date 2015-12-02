@@ -5,7 +5,8 @@ from src.task import Task
 from src.util import util_pickle
 
 class SparkDriver:
-    def __init__(self, job):
+    _master = None
+    def __init__(self):
         self.actions = {"reduce": self.do_reduce,
                         "collect": self.do_collect,
                         "count": self.do_count
@@ -20,15 +21,10 @@ class SparkDriver:
         self.result = []
         self.result_ready = gevent.event.Event()
         self.result_ready.clear()
-        self.job = util_pickle.unpickle_object(job)
 
-    def run(self):
-        self.job.run()
 
-    def do_drive(self, serialized_rdd, action_name, func):
-        last_rdd = util_pickle.unpickle_object(serialized_rdd)
+    def do_drive(self, last_rdd, action_name, *args):
         self.action = self.actions[action_name]
-        self.func = func
         self.master_addr = last_rdd._config['master_addr']
         lineage = last_rdd.get_lineage()
 
@@ -40,7 +36,7 @@ class SparkDriver:
             gevent.spawn(self.assign_task, task)
 
         self.result_ready.wait()
-        return self.action(self, func)
+        return self.action(args)
 
     def result_collected_notify(self, event):
         self.result_ready.set()
@@ -59,6 +55,7 @@ class SparkDriver:
         while worker_info is None:
             gevent.sleep(1)
             worker_info = master.get_available_worker()
+
         if isinstance(task.input_source, list):
             task.input_source['worker_addr'] = worker_info['address']
         task.worker = worker_info
@@ -66,9 +63,11 @@ class SparkDriver:
             self.task_node_table[worker_info["woker_id"]].append(task)
         else:
             self.task_node_table[worker_info["woker_id"]] = [task]
-        worker = zerorpc.Client()
-        worker.connect("tcp://".format(worker_info['address']))
-        worker.startTask(util_pickle.pickle_object(task))
+
+        # worker = zerorpc.Client()
+        # worker.connect("tcp://".format(worker_info['address']))
+        # worker.startTask(util_pickle.pickle_object(task))
+        self._master.assign_task(task, worker_info)
         self.task_list[task] = "Assigned"
 
     def init_tasks(self, lineage):
@@ -148,13 +147,14 @@ class SparkDriver:
         worker.connect('tcp://{0}'.format(task.worker['address']))
         self.result += worker.get_rdd_result(task.task_id, task_index)
 
-    def do_reduce(self, func):
+    def do_reduce(self, args):
+        func=args[0]
         return reduce(func, self.do_collect())
 
-    def do_collect(self, func=None):
+    def do_collect(self, args):
         return self.result
 
-    def do_count(self,func=None):
+    def do_count(self, args):
         return len(self.result)
 
 
