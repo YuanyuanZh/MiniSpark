@@ -26,7 +26,7 @@ class RDD(object):
         self.lineage = lineage
         return lineage
 
-    def collect(self):
+    def collect(self, driver):
         client = get_client(RDD._config['driver_addr'])
         return execute_command(client, client.do_drive,
                                util_pickle.pickle_object(self),

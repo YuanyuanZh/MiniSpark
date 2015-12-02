@@ -1,5 +1,7 @@
 from src.util.util_zerorpc import start_server
 
+MASTER_ADDRESS = '0.0.0.0:3000'
+
 
 class BasicClient(object):
     def __init__(self):

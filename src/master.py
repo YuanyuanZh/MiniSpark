@@ -7,10 +7,11 @@ import random
 from gevent.lock import *
 import time
 import os
-
+from src.driver import SparkDriver
 
 from util.util_enum import *
 from util.util_debug import *
+from util.util_pickle import *
 
 class Master():
     def __init__(self, port, debug):
@@ -20,6 +21,8 @@ class Master():
         self.worker_status_list = {}
         self.event_queue = Queue()
         self.debug = debug
+        self.job_id = 0
+        self.job_list = {}
 
 
     def registerWorker(self, worker_address):
@@ -189,7 +192,13 @@ class Master():
         rpc_server.run()
         # print "rpc run"
 
+    def get_job(self, job):
+        self.job_list[self.job_id] = unpickle_object(job)
+        self.job_list[self.job_id].run(SparkDriver())
+        job += 1
+
 if __name__ == '__main__':
+    status = Worker_Status.UP
     port = sys.argv[1]
     if len(sys.argv) == 3:
         if sys.argv[2] == 'debug':
