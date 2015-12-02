@@ -28,18 +28,23 @@ class RDD(object):
 
     def collect(self):
         client = get_client(RDD._config['driver_addr'])
-        return execute_command(client, client.do_collect,
-                               util_pickle.pickle_object(self))
+        return execute_command(client, client.do_drive,
+                               util_pickle.pickle_object(self),
+                               'collect',
+                               None)
 
     def count(self):
         client = get_client(RDD._config['driver_addr'])
-        return execute_command(client, client.do_count,
-                               util_pickle.pickle_object(self))
+        return execute_command(client, client.do_drive,
+                               util_pickle.pickle_object(self),
+                               'count',
+                               None)
 
     def reduce(self, func):
         client = get_client(RDD._config['driver_addr'])
-        return execute_command(client, client.do_count,
+        return execute_command(client, client.do_drive,
                                util_pickle.pickle_object(self),
+                               'reduce',
                                func)
 
     def save(self, path, output_name):
