@@ -10,20 +10,26 @@ def parse_lines(line):
     line = re.sub(r'\n', "", line)
     return line.split(' ')
 
+
+def increase_number(value, mod):
+    return (value + 1) % mod
+
+
 def send_word(worker_list):
     worker_count = len(worker_list)
     partition_count = 20
     worker_iterator = 0
     partition_iterator = 0
     while True:
-        message = {}
+        partition_iterator = increase_number(partition_iterator, partition_count)
+        worker_count = increase_number(worker_iterator, worker_count)
         client1 = get_client(worker_list[worker_iterator]['worker_id'])
-        execute_command(client1, client1.)
-        client2 = get_client(worker_list[(worker_iterator + 1) % worker_count]
-                            ['worker_id'])
-        execute_command(client2)
-        worker_iterator = (worker_iterator + 1) % worker_count
-        partition_iterator = (partition_iterator + 1) % partition_count
+        execute_command(client1, client1.send_word, partition_iterator, )
+
+        partition_iterator = increase_number(partition_iterator, partition_count)
+        worker_count = increase_number(worker_iterator, worker_count)
+        client2 = get_client(worker_list[worker_iterator]['worker_id'])
+        execute_command(client2, client2.send_word, partition_iterator)
 
 
 class WordCountClient(BasicClient):
