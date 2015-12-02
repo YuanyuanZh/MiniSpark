@@ -4,9 +4,8 @@ from src.rdd.rdd import WideRDD, TextFile, GroupByKey, Map, Join
 from src.task import Task
 from src.util import util_pickle
 
-
 class SparkDriver:
-    def __init__(self):
+    def __init__(self, job):
         self.actions = {"reduce": self.do_reduce,
                         "collect": self.do_collect,
                         "count": self.do_count
@@ -21,6 +20,10 @@ class SparkDriver:
         self.result = []
         self.result_ready = gevent.event.Event()
         self.result_ready.clear()
+        self.job = util_pickle.unpickle_object(job)
+
+    def run(self):
+        self.job.run()
 
     def do_drive(self, serialized_rdd, action_name, func):
         last_rdd = util_pickle.unpickle_object(serialized_rdd)

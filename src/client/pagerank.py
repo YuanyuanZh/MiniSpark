@@ -1,8 +1,11 @@
-from src.client.basicclient import BasicClient
+from src.client.basicclient import BasicClient, MASTER_ADDRESS
 from src.rdd import rdd
 import sys
 import re
 from src.rdd.rdd import RDD
+from src.util.util_pickle import pickle_object
+from src.util.util_zerorpc import execute_command
+from src.util.util_zerorpc import get_client
 
 
 def computeContribs(urls, rank):
@@ -43,8 +46,9 @@ if __name__ == '__main__':
     RDD._config = {'num_partition_RBK': 2,
                    'num_partition_GBK': 2,
                    'split_size': 128,
-                   "driver_addr": "",
-                   "master_addr": ""}
+                   }
+
     page_rank_client = PageRankClient(sys.argv[1])
-    page_rank_client.run()
+    client = get_client(MASTER_ADDRESS)
+    execute_command(client, client.get_job, pickle_object(page_rank_client))
     page_rank_client.start_server("0.0.0.0")
