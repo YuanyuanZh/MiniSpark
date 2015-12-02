@@ -23,6 +23,7 @@ class Master():
         self.debug = debug
         self.job_id = 0
         self.job_list = {}
+        self.driver_list = {}
 
 
     def registerWorker(self, worker_address):
@@ -48,73 +49,6 @@ class Master():
 
     def get_worker_list(self):
         return self.worker_list
-
-    def jobScheduler(self):
-        # print "enter scheduler : at %s" %time.asctime( time.localtime(time.time()) )
-        job = None
-        while True:
-            while not self.jobs.empty():
-                if job is None or job.state == 'COMPLETE':
-                    job = self.jobs.get()
-                    self.processing_jobs[job.jobId] = job
-                    # num_map_tasks = 0
-                    # num_reducer_tasks = 0
-                    # for i in range(len(self.worker_list)):
-                    #     if self.worker_list[i]['mapper'] == None:
-                    #         num_map_tasks += 1
-                    #     if self.worker_list[i]['reducer'] == None:
-                    #         num_reducer_tasks += 1
-                    partitions = []
-
-                    # assign tasks in creating job
-                    self.assignTask('mapper', job.map_task_list)
-                    self.assignTask('reducer', job.reduce_task_list)
-                    self.processing_jobs[job.jobId].state = 'PROCESSING'
-                    self.processing_jobs[job.jobId].progress = '0%'
-                    # while job.state != 'COMPLETE':
-            while not self.event_queue.empty():
-                event = self.event_queue.get_nowait()
-                if event.type == 'MAPPER_FINISHED':
-                    workerStatus = event.status
-                    # print "Mapper task %s finished. worker_id: %s %s at %s" % (
-                    #     workerStatus.mapper_status.split_id,workerStatus.worker_id,
-                    #     workerStatus.worker_address, time.asctime(time.localtime(time.time())))
-                    self.finishMapper(event.status, job.map_task_list)
-                if event.type == 'REDUCER_FINISHED':
-                    workerStatus = event.status
-                    # print "Reducer task %s finished. worker_id: %s %s at %s" % (
-                    #     workerStatus.reducer_status.partition_id, workerStatus.worker_id,
-                    #     workerStatus.worker_address, time.asctime(time.localtime(time.time())))
-                    self.finishReducer(event.status, job.reduce_task_list)
-                if event.type == 'WORKER_DOWN':
-                    workerStatus = event.status
-                    print "Warning: worker %s %s down at %s" % (
-                        workerStatus.worker_id,
-                        workerStatus.worker_address, time.asctime(time.localtime(time.time())))
-                    self.processWorkerDown(event.status, job)
-                if event.type == 'REGISTER_WORKER':
-                    worker = event.status
-                    self.worker_list[worker['id']] = worker
-                    # print "Register Worker: worker_id: %s, ip: %s at %s" % (
-                    #     worker['id'], worker['address'], time.asctime(time.localtime(time.time())))
-                    if job is not None:
-                        self.assignTask('mapper', job.map_task_list)
-                        self.assignTask('reducer', job.reduce_task_list)
-                if event.type == 'COLLECT_SUCCESS':
-                    print "Job %s completed! at %s" % (
-                        job.jobId, time.asctime(time.localtime(time.time())))
-                    # change job status
-                    self.processing_jobs[job.jobId].state = 'COMPLETE'
-                    self.processing_jobs[job.jobId].progress = '100%'
-                    job.state = 'COMPLETE'
-                if event.type == 'START_TASK_FAIL':
-                    worker_id = event.status['worker_id']
-                    type = event.status['task_type']
-                    if self.worker_list.has_key(worker_id):
-                        self.worker_list[worker_id][type] = 'Free'
-            # print "eee"
-            gevent.sleep(0)
-            # print "eee3333"
 
     def heartBeat(self):
         # print "enter heartbeat : at %s" %time.asctime( time.localtime(time.time()) )
@@ -145,7 +79,8 @@ class Master():
         event = {'type' : type,
                  'status': status
                  }
-        self.event_queue.put_nowait(event)
+        # self.event_queue.put_nowait(event)
+
 
     def updateWorkerStatus(self, worker_id, task_status_list):
         # update worker status
@@ -192,11 +127,18 @@ class Master():
         rpc_server.run()
         # print "rpc run"
 
-    def get_job(self, job):
+    def get_job(self, job, client_address):
         #TODO make a dict {job_id: client_info} and Gevent
-        self.job_list[self.job_id] = unpickle_object(job)
-        self.job_list[self.job_id].run()
-        job += 1
+        try:
+            self.job_list[self.job_id] = unpickle_object(job)
+            self.job_list[self.job_id].run()
+            self.driver_list[self.job_id] =
+            self.job_id += 1
+        except Exception as e:
+            debug_print("Create job: %s from client: %s failed at %s" % (
+            self.job_id, client_address, time.asctime(time.localtime(time.time()))), self.debug)
+            return -1
+        return self.job_id
 
     def produce_new_driver(self):
         return SparkDriver()
