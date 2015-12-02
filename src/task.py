@@ -19,3 +19,6 @@ class Task(object):
 
     def execute(self):
         pass
+
+    def __str__(self):
+        return "[Task {0}]{1}, source:{2}".format(self.task_id, self.last_rdd, self.input_source)

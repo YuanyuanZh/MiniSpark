@@ -9,35 +9,48 @@ class SparkDriver:
     def __init__(self):
         self.actions = {"reduce": self.do_reduce,
                         "collect": self.do_collect,
+                        "count": self.do_count
                         }
         # task_list: {task: status}
         self.task_list = {}
         # task_node_table: {worker_id: [tasks]}
-        self.task_node_table = {} 
-        self.is_finished = False
+        self.task_node_table = {}
         self.master_addr = None
+        self.func = None
+        self.action = None
+        self.result = []
+        self.result_ready = gevent.event.Event()
+        self.result_ready.clear()
 
     def do_drive(self, serialized_rdd, action_name, func):
         last_rdd = util_pickle.unpickle_object(serialized_rdd)
+        self.action = self.actions[action_name]
+        self.func = func
         self.master_addr = last_rdd._config['master_addr']
         lineage = last_rdd.get_lineage()
 
         # generate graph-table and stages
         # partition_graph = self.gen_graph_table(last_rdd)
         self.init_tasks(lineage)
-
         # Do some fuction to generate the rdd that apply the operation and the result
         for task in self.task_list.keys():
             gevent.spawn(self.assign_task, task)
 
+        self.result_ready.wait()
+        return self.action(self, func)
+
+    def result_collected_notify(self, event):
+        self.result_ready.set()
+
     def fault_handler(self, worker_id):
         for task in self.task_node_table[worker_id]:
             gevent.spawn(self.assign_task, task)
+        self.task_node_table.__delitem__(worker_id)
 
     def assign_task(self, task):
         """Assign the stages list to Master Node,
            return the last rdd that action should be applied"""
-        master=zerorpc.Client()
+        master = zerorpc.Client()
         master.connect("tcp://{0}".format(self.master_addr))
         worker_info = master.get_available_worker()
         while worker_info is None:
@@ -118,20 +131,29 @@ class SparkDriver:
                 self.task_list[task] = "Finished"
                 break
         for task in self.last_tasks.keys():
-            if self.last_tasks[task] is not 'Finished':
+            if self.task_list[task] is not 'Finished':
                 return
-        self.is_finished = True
-        master=zerorpc.Client()
-        master.connect('tcp://{0}'.format(self.master_addr))
-        self.result=[]
+        collect_process = gevent.spawn(self.get_all_results)
+        collect_process.link(self.result_collected_notify)
+
+    def get_all_results(self):
         for i in range(0, len(self.last_tasks)):
-            self.result += master.get_rdd_result(self.last_tasks[i].task_id, i)
+            gevent.spawn(self.get_result, self.last_tasks.keys()[i], i)
 
-    def get_available_worker(self):
-        pass
+    def get_result(self, task, task_index):
+        worker = zerorpc.Client()
+        worker.connect('tcp://{0}'.format(task.worker['address']))
+        self.result += worker.get_rdd_result(task.task_id, task_index)
 
-    def do_reduce(self, serialized_rdd, func):
-        pass
+    def do_reduce(self, func):
+        return reduce(func, self.do_collect())
 
-    def do_collect(self, serialized_rdd):
-        pass
+    def do_collect(self, func=None):
+        return self.result
+
+    def do_count(self,func=None):
+        return len(self.result)
+
+
+
+
