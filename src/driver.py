@@ -49,12 +49,10 @@ class SparkDriver:
     def assign_task(self, task):
         """Assign the stages list to Master Node,
            return the last rdd that action should be applied"""
-        master = zerorpc.Client()
-        master.connect("tcp://{0}".format(self.master_addr))
-        worker_info = master.get_available_worker()
+        worker_info = self._master.get_available_worker()
         while worker_info is None:
             gevent.sleep(1)
-            worker_info = master.get_available_worker()
+            worker_info = self._master.get_available_worker()
 
         if isinstance(task.input_source, list):
             task.input_source['worker_addr'] = worker_info['address']

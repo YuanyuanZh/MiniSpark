@@ -27,20 +27,19 @@ class RDD(object):
         self.lineage = lineage
         return lineage
 
-    def collect(self):
-        driver=SparkDriver._master.get_master().produce_driver()
+    def collect(self, driver):
         driver.do_drive(self, "collect")
 
     def count(self, driver):
-        driver=SparkDriver._master.get_master().produce_driver()
+        #driver=SparkDriver._master.get_master().produce_driver()
         driver.do_drive(self, "count")
 
     def reduce(self, driver, func):
-        driver=SparkDriver._master.get_master().produce_driver()
+        #driver=SparkDriver._master.get_master().produce_driver()
         driver.do_drive(self, "reduce", func)
 
     def save(self, driver, output_name):
-        driver=SparkDriver._master.get_master().produce_driver()
+        #driver=SparkDriver._master.get_master().produce_driver()
         driver.do_drive(self,"save", output_name)
 
     def partition_intermediate_rst(self, data, num_partitions):
