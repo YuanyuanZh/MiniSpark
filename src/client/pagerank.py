@@ -25,10 +25,9 @@ def parseNeighbors(urls):
 
 class PageRankClient(BasicClient):
     def __init__(self, filename):
-        super(PageRankClient, self).__init__()
         self.filename = filename
 
-    def run(self):
+    def run(self,driver):
         t = rdd.TextFile(self.filename)
         m = rdd.Map(t, (lambda urls: parseNeighbors(urls)))
         links = rdd.GroupByKey(m)

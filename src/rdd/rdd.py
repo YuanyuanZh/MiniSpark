@@ -7,7 +7,7 @@ class RDD(object):
     _current_id = 0
 
     def __init__(self):
-        self.lineage = None
+        pass
 
     def lineage(self):
         pass
@@ -47,8 +47,6 @@ class RDD(object):
 
 
 class Streaming(RDD):
-    def __init__(self):
-        super(Streaming, self).__init__()
 
     def get(self, input_source):
         job_id = input_source['job_id']
@@ -57,9 +55,6 @@ class Streaming(RDD):
 
 
 class NarrowRDD(RDD):
-    def __int__(self, parent):
-        super(NarrowRDD, self).__init__()
-        self.parent = parent
 
     def partitions(self):
         partitions = self.parent.partitions()
@@ -83,8 +78,6 @@ class NarrowRDD(RDD):
 
 
 class WideRDD(RDD):
-    def __int__(self):
-        super(WideRDD, self).__init__()
 
     def partitions(self):
         partitions = []
@@ -122,11 +115,11 @@ class WideRDD(RDD):
 
 class TextFile(RDD):
     def __init__(self, filename):
-        super(TextFile, self).__init__()
         self.filename = filename
         self.id = "TextFile_{0}".format(TextFile._current_id)
         TextFile._current_id += 1
         self.data = None
+        self.lineage = None
         self.file_split_info = partition.RangePartition(self.filename, self._config['split_size']).partition()
         self.num_partitions = len(self.file_split_info.values())
         self.num_rst_partitions = None
@@ -182,7 +175,6 @@ class TextFile(RDD):
 
 class Map(NarrowRDD):
     def __init__(self, parent, func):
-        super(Map, self).__init__()
         self.parent = parent
         self.func = func
         self.id = "Map_{0}".format(Map._current_id)
@@ -190,6 +182,7 @@ class Map(NarrowRDD):
         self.num_partitions = self.parent.num_partitions
         self.num_rst_partitions = None
         self.data = None
+        self.lineage = None
 
     def get(self, input_source):
         if not self.data:
@@ -207,7 +200,6 @@ class Map(NarrowRDD):
 
 class Filter(NarrowRDD):
     def __init__(self, parent, func):
-        super(Filter, self).__init__()
         self.parent = parent
         self.func = func
         self.id = "Filter_{0}".format(Filter._current_id)
@@ -215,6 +207,7 @@ class Filter(NarrowRDD):
         self.num_partitions = self.parent.num_partitions
         self.num_rst_partitions = None
         self.data = None
+        self.lineage = None
 
     def get(self, input_source):
         if not self.data:
@@ -233,7 +226,6 @@ class Filter(NarrowRDD):
 
 class FlatMap(NarrowRDD):
     def __init__(self, parent, func):
-        super(FlatMap, self).__init__()
         self.parent = parent
         self.func = func
         self.id = "FlatMap_{0}".format(FlatMap._current_id)
@@ -241,6 +233,7 @@ class FlatMap(NarrowRDD):
         self.num_partitions = self.parent.num_partitions
         self.num_rst_partitions = None
         self.data = None
+        self.lineage = None
 
     def get(self, input_source):
         if not self.data:
@@ -259,13 +252,13 @@ class FlatMap(NarrowRDD):
 
 class Join(NarrowRDD):
     def __init__(self, parent):
-        super(Join, self).__init__()
         self.parent = parent
         self.id = "Join_{0}".format(Join._current_id)
         Join._current_id += 1
         self.num_partitions = self.parent[0].num_partitions
         self.num_rst_partitions = None
         self.data = None
+        self.lineage = None
 
     def get_lineage(self):
         lineage = []
@@ -309,7 +302,6 @@ class Join(NarrowRDD):
 
 class MapValue(NarrowRDD):
     def __init__(self, parent, func):
-        super(MapValue, self).__init__()
         self.parent = parent
         self.func = func
         self.id = "MapValue_{0}".format(MapValue._current_id)
@@ -317,6 +309,7 @@ class MapValue(NarrowRDD):
         self.num_partitions = self.parent.num_partitions
         self.num_rst_partitions = None
         self.data = None
+        self.lineage = None
 
     def get(self, input_source):
         if not self.data:
@@ -334,13 +327,13 @@ class MapValue(NarrowRDD):
 
 class GroupByKey(WideRDD):
     def __init__(self, parent):
-        super(GroupByKey, self).__init__()
         self.parent = parent
         self.id = "GroupByKey_{0}".format(GroupByKey._current_id)
         GroupByKey._current_id += 1
         self.num_partitions = self._config['num_partition_GBK']
         self.num_rst_partitions = None
         self.data = None
+        self.lineage = None
 
     def get(self, input_source):
         if not self.data:
@@ -367,7 +360,6 @@ class GroupByKey(WideRDD):
 
 class ReduceByKey(WideRDD):
     def __init__(self, parent, func):
-        super(ReduceByKey, self).__init__()
         self.parent = parent
         self.id = "ReduceByKey_{0}".format(ReduceByKey._current_id)
         ReduceByKey._current_id += 1
@@ -375,6 +367,7 @@ class ReduceByKey(WideRDD):
         self.num_partitions = self._config['num_partition_RBK']
         self.num_rst_partitions = None
         self.data = None
+        self.lineage = None
 
     def get(self, input_source):
         if not self.data:

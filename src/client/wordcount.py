@@ -15,7 +15,6 @@ def parse_lines(line):
 
 class WordCountClient(BasicClient):
     def __init__(self, filename):
-        super(WordCountClient, self).__init__()
         self.filename = filename
 
     def run(self, driver):
