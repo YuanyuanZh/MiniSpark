@@ -34,10 +34,9 @@ def send_word(worker_list):
 
 class WordCountClient(BasicClient):
     def __init__(self, filename):
-        super(WordCountClient, self).__init__()
         self.filename = filename
 
-    def run(self):
+    def run(self,driver):
         lines = rdd.TextFile(self.filename)
         f = rdd.FlatMap(lines, lambda x: parse_lines(x))
         m = rdd.Map(f, lambda x: (x, 1))

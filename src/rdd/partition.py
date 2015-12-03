@@ -1,14 +1,5 @@
-class Partition(object):
-    def __init__(self):
-        pass
-
-    def partition(self):
-        pass
-
-
 class HashPartition(object):
     def __init__(self, data, num_partitions):
-        super(HashPartition, self).__init__()
         self.data = data
         self.num_partitions = num_partitions
 
@@ -26,9 +17,8 @@ class HashPartition(object):
         return ord(key[0]) % self.num_partitions
 
 
-class RangePartition(Partition):
+class RangePartition(object):
     def __init__(self, filename, split_size):
-        super(RangePartition, self).__init__()
         self.filename = filename
         self.split_size = split_size
 
