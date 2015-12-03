@@ -117,6 +117,7 @@ class WideRDD(RDD):
         for partition in input_source:
             client = get_client(partition['worker_addr'])
             result += execute_command(client, client.get_rdd_result,
+                                      partition['job_id'],
                                       partition['task_id'],
                                       partition['partition_id'])
         return result
