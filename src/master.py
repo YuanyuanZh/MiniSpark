@@ -173,8 +173,8 @@ class Master():
             self.driver_list[job_id] = (driver,client_address)
             self.job_id += 1
         except Exception as e:
-            debug_print("Create job: %s from client: %s failed at %s" % (
-            self.job_id, client_address, time.asctime(time.localtime(time.time()))), self.debug)
+            debug_print("Create job: %s from client: %s failed  with %s at %s" % (
+            self.job_id, client_address, str(e), time.asctime(time.localtime(time.time()))), self.debug)
             return -1
         return self.job_id
 
