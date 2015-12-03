@@ -158,9 +158,7 @@ class Worker():
                             for task_id, value in task_list.items():
                                 if value['status'] == Status.FINISH:
                                     task_status_list[job_id][task_id] = Status.FINISH_REPORTED
-
             gevent.sleep(2)
-
 
     def run(self):
         self.register()
