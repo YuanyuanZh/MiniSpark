@@ -14,5 +14,5 @@ class BasicClient(object):
     def _print_message(message):
         print message
 
-    def start_server(self, ip):
-        start_server(ip, self)
+    def start_server(self, address):
+        start_server(address, self)

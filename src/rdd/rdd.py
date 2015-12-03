@@ -1,7 +1,4 @@
-import zerorpc
-from src.driver import SparkDriver
 from src.rdd import partition
-from src.util import util_pickle
 from src.util.util_zerorpc import get_client, execute_command
 
 
@@ -27,20 +24,19 @@ class RDD(object):
         self.lineage = lineage
         return lineage
 
-    def collect(self):
-        driver=SparkDriver._master.get_master().produce_driver()
+    def collect(self, driver):
         driver.do_drive(self, "collect")
 
     def count(self, driver):
-        driver=SparkDriver._master.get_master().produce_driver()
+        #driver=SparkDriver._master.get_master().produce_driver()
         driver.do_drive(self, "count")
 
     def reduce(self, driver, func):
-        driver=SparkDriver._master.get_master().produce_driver()
+        #driver=SparkDriver._master.get_master().produce_driver()
         driver.do_drive(self, "reduce", func)
 
     def save(self, driver, output_name):
-        driver=SparkDriver._master.get_master().produce_driver()
+        #driver=SparkDriver._master.get_master().produce_driver()
         driver.do_drive(self,"save", output_name)
 
     def partition_intermediate_rst(self, data, num_partitions):
@@ -118,6 +114,7 @@ class WideRDD(RDD):
         for partition in input_source:
             client = get_client(partition['worker_addr'])
             result += execute_command(client, client.get_rdd_result,
+                                      partition['job_id'],
                                       partition['task_id'],
                                       partition['partition_id'])
         return result

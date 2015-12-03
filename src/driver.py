@@ -2,16 +2,18 @@ import gevent
 import zerorpc
 from src.rdd.rdd import WideRDD, TextFile, GroupByKey, Map, Join
 from src.task import Task
-from src.util import util_pickle
+from src.util.util_debug import *
+
 
 class SparkDriver:
     _master = None
-    def __init__(self):
+    def __init__(self, job_id):
         self.actions = {"reduce": self.do_reduce,
                         "collect": self.do_collect,
                         "count": self.do_count
                         }
         # task_list: {task: status}
+        self.job_id=job_id
         self.task_list = {}
         # task_node_table: {worker_id: [tasks]}
         self.task_node_table = {}
@@ -49,12 +51,10 @@ class SparkDriver:
     def assign_task(self, task):
         """Assign the stages list to Master Node,
            return the last rdd that action should be applied"""
-        master = zerorpc.Client()
-        master.connect("tcp://{0}".format(self.master_addr))
-        worker_info = master.get_available_worker()
+        worker_info = self._master.get_available_worker()
         while worker_info is None:
             gevent.sleep(1)
-            worker_info = master.get_available_worker()
+            worker_info = self._master.get_available_worker()
 
         if isinstance(task.input_source, list):
             task.input_source['worker_addr'] = worker_info['address']
@@ -64,10 +64,7 @@ class SparkDriver:
         else:
             self.task_node_table[worker_info["woker_id"]] = [task]
 
-        # worker = zerorpc.Client()
-        # worker.connect("tcp://".format(worker_info['address']))
-        # worker.startTask(util_pickle.pickle_object(task))
-        self._master.assign_task(task, worker_info)
+        self._master.assign_task(task, worker_info['worker_id'])
         self.task_list[task] = "Assigned"
 
     def init_tasks(self, lineage):
@@ -119,22 +116,25 @@ class SparkDriver:
                         for elem in tar_list:
                             if int(elem.split('_')[1]) == cur_par_id:
                                 # elem_dict: {'parent_id': rdd.id, 'partition_id': str(id), worker_addr: 'XXXX:XX'}
-                                elem_dict = {'task_id': "{0}_{1}".format(cur_stage_id, cur_par_id),
+                                elem_dict = {'job_id': self.job_id,
+                                             'task_id': "{0}_{1}".format(cur_stage_id, cur_par_id),
                                              'partition_id': elem.split('_')[0]}
                                 input_source.append(elem_dict)
             else:
                 input_source = None
-            tasks.update({Task(last_rdd, input_source, "{0}_{1}".format(cur_stage_id, cur_par_id)): 'New'})
+            tasks.update({Task(last_rdd, input_source, "{0}_{1}".format(cur_stage_id, cur_par_id), self.job_id): 'New'})
         return tasks
 
     def finish_task(self, task_id):
         for task in self.task_list.keys():
             if task.task_id == task_id:
                 self.task_list[task] = "Finished"
+                debug_print("[SparkDriver] Task {0} for Job {1} Finished".format(task_id, self.job_id))
                 break
         for task in self.last_tasks.keys():
             if self.task_list[task] is not 'Finished':
                 return
+        debug_print("[SparkDriver] Job {1} Finished".format(self.job_id))
         collect_process = gevent.spawn(self.get_all_results)
         collect_process.link(self.result_collected_notify)
 
@@ -142,20 +142,23 @@ class SparkDriver:
         for i in range(0, len(self.last_tasks)):
             gevent.spawn(self.get_result, self.last_tasks.keys()[i], i)
 
-    def get_result(self, task, task_index):
-        worker = zerorpc.Client()
-        worker.connect('tcp://{0}'.format(task.worker['address']))
-        self.result += worker.get_rdd_result(task.task_id, task_index)
+    def get_result(self, task, part_id):
+        self._master.get_rdd_result(task, part_id)
 
     def do_reduce(self, args):
         func=args[0]
-        return reduce(func, self.do_collect())
+        reduce_result=reduce(func, self.result)
+        debug_print("[SparkDriver] The result of REDUCE in Job {0} is :{1}".format(self.job_id, reduce_result))
+        self._master.return_client(self.job_id, reduce_result)
 
-    def do_collect(self, args):
-        return self.result
+    def do_collect(self, args=None):
+        debug_print("[SparkDriver] The result of COLLECT in Job {0} is :{1}".format(self.job_id, self.result))
+        self._master.return_client(self.job_id, self.result)
 
-    def do_count(self, args):
-        return len(self.result)
+    def do_count(self, args=None):
+        count_result=len(self.result)
+        debug_print("[SparkDriver] The result of COUNT in Job {0} is :{1}".format(self.job_id, count_result))
+        self._master.return_client(self.job_id, count_result)
 
 
 

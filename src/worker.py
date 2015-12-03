@@ -9,6 +9,7 @@ from gevent.queue import Queue
 from util.util_debug import *
 from util.util_enum import *
 from util.util_zerorpc import *
+from util.util_pickle import *
 
 
 class Worker():
@@ -37,23 +38,23 @@ class Worker():
             return "127.0.0.1"
 
     def get_streaming_message(self, value):
-       """
-       Function to get and store streaming message.
+        """
+        Function to get and store streaming message.
 
-       :param value: spark streaming message
-              spark streaming message is "job_id,partition_id,value"
-       """
-       value_array = value.split(",")
-       job_id = value_array[0]
-       partition_id = value_array[1]
-       value = value_array[2]
+        :param value: spark streaming message
+               spark streaming message is "job_id,partition_id,value"
+        """
+        value_array = value.split(",")
+        job_id = value_array[0]
+        partition_id = value_array[1]
+        value = value_array[2]
 
-       if job_id not in self.streaming_data.keys():
-           self.streaming_data[job_id] = {}
-       if partition_id not in self.streaming_data[job_id].keys():
-           self.streaming_data[job_id][partition_id] = []
-       self.streaming_data[job_id][partition_id].append(value)
-       self.streaming_data = {}
+        if job_id not in self.streaming_data.keys():
+            self.streaming_data[job_id] = {}
+        if partition_id not in self.streaming_data[job_id].keys():
+            self.streaming_data[job_id][partition_id] = []
+        self.streaming_data[job_id][partition_id].append(value)
+        self.streaming_data = {}
 
     def startRPCServer(self):
         master = zerorpc.Server(self)
@@ -66,44 +67,59 @@ class Worker():
         master.bind('tcp://' + addr)
         master.run()
 
-    def runPartition(self, taskStr):
-        input = StringIO.StringIO(taskStr)
-        unpickler = pickle.Unpickler(input)
-        task = unpickler.load()
-        key = task.task_id
-        # key = partition.rdd_id+":"+partition.partition_id
-        self.all_task_list[key] = {"status": Status.START,
-                                   "data": None
-                                   }
+    def runPartition(self, task_str):
+        task = unpickle_object(task_str)
+        job_id = task.job_id
+        task_id = task.task_id
+        # create job if not exist
+        if not self.all_task_list.has_key(job_id):
+            task_list = {}
+            task_list[task_id] = {"status": Status.START,
+                                  "data": None
+                                  }
+            self.all_task_list[job_id] = task_list
+        else:
+            self.all_task_list[job_id][task_id] = {"status": Status.START,
+                                                   "data": None
+                                                   }
+        debug_print(
+            "Start task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
+            self.debug)
         result = task.last_rdd.get(task.input_source)
-        self.all_task_list[key] = {"status": Status.FINISH,
-                                   "data": result
-                                   }
+        self.all_task_list[job_id][task_id] = {"status": Status.FINISH,
+                                               "data": result
+                                               }
+        debug_print(
+            "Finish task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
+            self.debug)
 
-    def get_rdd_result(self, task_id, partition_id):
-        if self.all_task_list.has_key(task_id):
-            data =  self.all_task_list[task_id]['data']
+    def get_rdd_result(self, job_id, task_id, partition_id):
+        if self.all_task_list.has_key(job_id) and self.all_task_list[job_id].has_key(task_id):
+            data = self.all_task_list[job_id][task_id]['data']
+            debug_print(
+            "Get RDD result with job : %s task: %s partition: %s at %s" % (job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
+            self.debug)
             if data is not None:
-                if partition_id is None :
+                if partition_id is None:
                     return data
-                else :
+                else:
                     if data.has_key(partition_id):
                         return data[partition_id]
         return None
 
     def register(self):
-        while self.id is None :
+        while self.id is None:
             client = get_client(self.master_address)
-            self.id = execute_command(client, client.registerWorker,self.worker_address)
+            self.id = execute_command(client, client.registerWorker, self.worker_address)
             # self.id = client.registerWorker(self.worker_address)
             if self.id is not None:
-                debug_print("worker %d  %s registered at %s " % (self.id, self.worker_address, time.asctime(time.localtime(time.time()))), self.debug)
+                debug_print("worker %d  %s registered at %s " % (
+                self.id, self.worker_address, time.asctime(time.localtime(time.time()))), self.debug)
                 break
-            else :
+            else:
                 gevent.sleep(2)
 
-
-    def startTask(self, task):
+    def start_task(self, task):
         self.TaskQueue.put(task)
         return 0
 
@@ -114,38 +130,37 @@ class Worker():
                 # print "Create map thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
                 thread = gevent.spawn(self.runPartition, task)
                 debug_print("Task created: Key: %d at %s" % (
-                        task.partition_id, time.asctime(time.localtime(time.time()))), self.debug)
+                    task.partition_id, time.asctime(time.localtime(time.time()))), self.debug)
                 print
             gevent.sleep(0)
 
     def heartbeat(self):
         while True:
             if self.id is not None:
-                #traverse task list and report processing tasks
+                # traverse task list and report processing tasks
                 task_status_list = {}
-                for key, value in self.all_task_list.items():
-                    if value['status'] != Status.FINISH_REPORTED:
-                        task_status_list[key] = value['status']
-                # print "send status"
-                client = zerorpc.Client()
-                client.connect('tcp://' + self.master_address)
-                # if status.mapper_status is not None:
-                # print "Worker update status UPdate: worker_id: %s, mapper key: %s at %s" % (
-                #     self.id, status.mapper_status.split_id, time.asctime(time.localtime(time.time())))
-                try:
-                    debug_print("Worker update task status: worker_id: %s at %s" % (
-                        self.id, time.asctime(time.localtime(time.time()))), self.debug)
-                    ret = client.updateWorkerStatus(self.id, task_status_list)
-                    if ret is not None:
-                        client.close()
-                        if ret == 0:
-                            for key, value in self.all_task_list.items():
+                for job_id, task_list in self.all_task_list.items():
+                    task_status_list[job_id] = {}
+                    for task_id, value in task_list.items():
+                        if value['status'] != Status.FINISH_REPORTED:
+                            task_status_list[job_id][task_id] = value['status']
+
+                client = get_client(self.master_address)
+                debug_print("Worker update task status: worker_id: %s at %s" % (
+                    self.id, time.asctime(time.localtime(time.time()))), self.debug)
+                ret = execute_command(client, client.updateWorkerStatus, self.id, task_status_list)
+                # ret = client.updateWorkerStatus(self.id, task_status_list)
+                if ret is not None:
+                    # client.close()
+                    if ret == 0:
+                        # if already reported finish task, don't need to report finish again
+                        for job_id, task_list in self.all_task_list.items():
+                            for task_id, value in task_list.items():
                                 if value['status'] == Status.FINISH:
-                                    value['status'] = Status.FINISH_REPORTED
-                except  zerorpc.LostRemote:
-                    print "RPC error: lost remote"
-                    pass
+                                    task_status_list[job_id][task_id] = Status.FINISH_REPORTED
+
             gevent.sleep(2)
+
 
     def run(self):
         self.register()
