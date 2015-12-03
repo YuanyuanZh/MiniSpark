@@ -159,17 +159,17 @@ class Worker():
                                 if value['status'] == Status.FINISH:
                                     task_status_list[job_id][task_id] = Status.FINISH_REPORTED
 
-        gevent.sleep(2)
+            gevent.sleep(2)
 
 
-def run(self):
-    self.register()
-    # self.startRPCServer()
-    thread1 = gevent.spawn(self.heartbeat)
-    thread2 = gevent.spawn(self.TaskManager())
-    thread3 = gevent.spawn(self.startRPCServer)
-    # self.startRPCServer()
-    gevent.joinall([thread1, thread3, thread2])
+    def run(self):
+        self.register()
+        # self.startRPCServer()
+        thread1 = gevent.spawn(self.heartbeat)
+        thread2 = gevent.spawn(self.TaskManager())
+        thread3 = gevent.spawn(self.startRPCServer)
+        # self.startRPCServer()
+        gevent.joinall([thread1, thread3, thread2])
 
 
 if __name__ == '__main__':

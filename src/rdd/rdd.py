@@ -1,7 +1,4 @@
-import zerorpc
-from src.driver import SparkDriver
 from src.rdd import partition
-from src.util import util_pickle
 from src.util.util_zerorpc import get_client, execute_command
 
 
