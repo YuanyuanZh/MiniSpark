@@ -12,6 +12,8 @@ from src.driver import SparkDriver
 from util.util_enum import *
 from util.util_debug import *
 from util.util_pickle import *
+from util.util_zerorpc import *
+
 
 class Master():
     def __init__(self, port, debug):
@@ -50,6 +52,27 @@ class Master():
     def get_worker_list(self):
         return self.worker_list
 
+    def assign_task(self, task, worker_id):
+        task_str = pickle_object(task)
+        worker_address = self.worker_list[worker_id]['address']
+        client = get_client(worker_address)
+        ret = execute_command(client,client.start_task,task_str)
+        if ret == 0:
+            self.worker_list[worker_id]['num_slots'] -= 1
+            debug_print("Assign task successfully: worker_id: %s job: %s task: %s at %s" % (
+                            worker_id, task.job_id, task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
+
+    def get_rdd_result(self, task, partition_id):
+        worker_address = task.worker['address']
+        job_id = task.job_id
+        task_id = task.task_id
+        client = get_client(worker_address)
+        data = execute_command(client, client.get_rdd_result, job_id, task_id, partition_id)
+        debug_print("Get RDD result task: job: %s task: %s at %s" % (
+                            job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
+
+        return data
+
     def heartBeat(self):
         # print "enter heartbeat : at %s" %time.asctime( time.localtime(time.time()) )
         while True:
@@ -64,7 +87,9 @@ class Master():
                             if self.worker_list[worker_id] is not None :
                                 del self.worker_list[worker_id]
                                 # self.worker_list[worker_id]['num_slots'] == 0
-                        self.reportEvent(Event.WORKER_DOWN, worker_id)
+                        for job_id in self.driver_list.keys():
+                            self.driver_list[job_id][0].fault_handler(worker_id)
+                        # self.reportEvent(Event.WORKER_DOWN, worker_id)
                         debug_print("Report Worker Down: worker_id: %s at %s" % (
                             worker_id, time.asctime(time.localtime(time.time()))), self.debug)
                         # print "Find worker down: worker_id: %s, ip: %s at %s" % (
@@ -79,12 +104,13 @@ class Master():
         event = {'type' : type,
                  'status': status
                  }
+
         # self.event_queue.put_nowait(event)
 
 
     def updateWorkerStatus(self, worker_id, task_status_list):
         # update worker status
-        if self.worker_status_list.has_key(worker_id) == False:
+        if not self.worker_status_list.has_key(worker_id):
             # create this worker status if not exist
             status = {
                 'worker_status': Worker_Status.UP,
@@ -99,15 +125,25 @@ class Master():
             if origin_status['worker_status'] != 'Down':
                 origin_status['task_status_list'] = task_status_list
                 origin_status['num_callback'] = random.random()
-        # check status
-        for key, status in task_status_list.items():
+        # check task status
+        for job_id, task_list in task_status_list.items():
+            for task_id, status in task_list.items():
                 if status == Status.FINISH :
-                    if self.worker_list[worker_id] is not None :
+                    if self.worker_list[worker_id] is not None:
                         self.worker_list[worker_id]['num_slots'] += 1
-                    self.reportEvent(Event.FINISH_TASK, key)
-                    debug_print("Report Task Finish: worker_id: %s task_id: %s at %s" % (
-                    worker_id, key, time.asctime(time.localtime(time.time()))), self.debug)
+                    driver = self.find_driver(job_id)
+                    if driver is not None:
+                        driver.finish_task(task_id)
+                        # self.reportEvent(Event.FINISH_TASK, key)
+                        debug_print("Report Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
+                        worker_id, job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
         return 0
+
+    def find_driver(self,job_id):
+        if self.driver_list.has_key(job_id):
+            return self.driver_list[job_id][0]
+        else:
+            return None
 
     def run(self):
         thread1 = gevent.spawn(self.heartBeat)
@@ -130,9 +166,11 @@ class Master():
     def get_job(self, job, client_address):
         #TODO make a dict {job_id: client_info} and Gevent
         try:
-            self.job_list[self.job_id] = unpickle_object(job)
-            self.job_list[self.job_id].run()
-            self.driver_list[self.job_id] =
+            job_id = self.job_id
+            driver = SparkDriver(job_id)
+            self.job_list[job_id] = unpickle_object(job)
+            self.job_list[job_id].run(driver)
+            self.driver_list[job_id] = (driver,client_address)
             self.job_id += 1
         except Exception as e:
             debug_print("Create job: %s from client: %s failed at %s" % (
@@ -140,8 +178,17 @@ class Master():
             return -1
         return self.job_id
 
-    def produce_new_driver(self):
-        return SparkDriver()
+    def return_client(self, job_id, result):
+        if self.driver_list.has_key(job_id):
+            client_address = self.driver_list[job_id][1]
+            client = get_client(client_address)
+            debug_print("Finish job: %s for client %s at %s" % (
+            job_id, client_address, time.asctime(time.localtime(time.time()))), self.debug)
+            execute_command(client, client._print_message, 'Finish job with result: ' + result)
+
+
+    # def produce_new_driver(self, job_id):
+    #     return SparkDriver()
 
 if __name__ == '__main__':
     status = Worker_Status.UP
