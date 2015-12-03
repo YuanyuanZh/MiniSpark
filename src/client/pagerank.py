@@ -50,5 +50,5 @@ if __name__ == '__main__':
 
     page_rank_client = PageRankClient(sys.argv[1])
     client = get_client(MASTER_ADDRESS)
-    execute_command(client, client.get_job, pickle_object(page_rank_client))
+    execute_command(client, client.get_job, pickle_object(page_rank_client), sys.argv[2])
     page_rank_client.start_server("0.0.0.0")
