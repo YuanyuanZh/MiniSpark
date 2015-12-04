@@ -94,15 +94,18 @@ class Worker():
             self.debug)
 
     def get_rdd_result(self, job_id, task_id, partition_id):
+        data = None
         if self.all_task_list.has_key(job_id) and self.all_task_list[job_id].has_key(task_id):
             data = self.all_task_list[job_id][task_id]['data']
-
             debug_print(
             "Get RDD result val {0} with job : {1} task: {2} partition: {3} at {4}".format(data, job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
             self.debug)
+            print "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%data={0}, partition_id={1} isDict={2}".format(data, partition_id, isinstance(data, dict))
             if isinstance(data, dict):
                 if data.has_key(int(partition_id)):
                     return data[int(partition_id)]
+                else:
+                    return []
         return data
 
     def register(self):

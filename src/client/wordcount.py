@@ -34,7 +34,9 @@ if __name__ == '__main__':
     self_address = sys.argv[2]
     filepath = sys.argv[3]
 
-    word_count_client = WordCountClient("/Users/kaijiezhou/Documents/workspaces/Python/DoEnjoy-project3/files/wordcount")
+    #word_count_client = WordCountClient("/Users/kaijiezhou/Documents/workspaces/Python/DoEnjoy-project3/files/wordcount")
+    word_count_client = WordCountClient(filepath)
+
     new_rdd = unpickle_object(pickle_object(word_count_client))
 
 
@@ -42,4 +44,4 @@ if __name__ == '__main__':
     obj = pickle_object(word_count_client)
     execute_command(client, client.get_job, obj, self_address)
     print "[Client]Job Submited...."
-    word_count_client.start_server("127.0.0.1:" + self_address.split(":")[1])
+    word_count_client.start_server(self_address)

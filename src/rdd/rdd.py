@@ -78,6 +78,14 @@ class NarrowRDD(RDD):
         return 'RangePartition'
 
 
+class MultiParentNarrowRDD(NarrowRDD):
+    """
+    Just For Classification
+    """
+    def __init__(self):
+        pass
+
+
 class WideRDD(RDD):
 
     def partitions(self):
@@ -106,21 +114,24 @@ class WideRDD(RDD):
     def shuffle(self, input_source):
         results = []
         debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
-        for partition in input_source:
-            debug_print("[Wide-RDD] Shuffling from source {0}".format(partition))
-            client = get_client(partition['worker_addr'])
-            #TODO Here May Return None
-            result=execute_command(client, client.get_rdd_result,
-                                      partition['job_id'],
-                                      partition['task_id'],
-                                      partition['partition_id'])
-            print "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee{0}".format(result)
-            while result is None:
+        for partitions in input_source:
+            debug_print("[Wide-RDD] Shuffling from source {0}".format(partitions))
+            if not isinstance(partitions, list):
+                partitions=[partitions]
+            for p in partitions:
+                client = get_client(p['worker_addr'])
+                #TODO Here May Return None
                 result=execute_command(client, client.get_rdd_result,
-                                      partition['job_id'],
-                                      partition['task_id'],
-                                      partition['partition_id'])
-            results += result
+                                          p['job_id'],
+                                          p['task_id'],
+                                          p['partition_id'])
+                while result is None:
+                    result=execute_command(client, client.get_rdd_result,
+                                          p['job_id'],
+                                          p['task_id'],
+                                          p['partition_id'])
+                print "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee result={0}, InputSource={1}".format(result,p)
+                results += result
         return results
 
 
@@ -264,10 +275,11 @@ class FlatMap(NarrowRDD):
                     new_element += rst
                 self.data = new_element
         self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
+        debug_print("[FlatMap-RDD] {0} has destnation# {1}, now data is {2}".format(self.id, self.num_rst_partitions,self.data))
         return self.data
 
 
-class Join(NarrowRDD):
+class Join(MultiParentNarrowRDD):
     def __init__(self, parent):
         self.parent = parent
         self.id = "Join_{0}".format(Join._current_id)
@@ -287,8 +299,8 @@ class Join(NarrowRDD):
 
     def get(self, input_source):
         if not self.data:
-            element1 = self.parent[0].get([input_source[0]])
-            element2 = self.parent[1].get([input_source[1]])
+            element1 = self.parent[0].get([input_source])
+            element2 = self.parent[1].get([input_source])
             if element1 == None or element2 == None:
                 return None
             else:
@@ -297,6 +309,7 @@ class Join(NarrowRDD):
                     rst.append((element1[i][0], (element1[i][1], element2[i][1])))
                 self.data = rst
         self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
+        debug_print("[Join-RDD] id: {0} self.data={1}".format(self.id, self.data))
         return self.data
 
     def partitions(self):
@@ -334,6 +347,7 @@ class MapValue(NarrowRDD):
             if element == None:
                 return None
             else:
+                debug_print("[MapValue-RDD] input_source={0}, element={1}".format(input_source, element))
                 rst = []
                 for e in element:
                     rst.append((e[0], self.func(e[1])))
@@ -360,6 +374,7 @@ class GroupByKey(WideRDD):
                 return None
             else:
                 element_new = {}
+                debug_print("[GroupByKey-RDD] input_source={0}, element={1}".format(input_source, element))
                 for e in element:
                     k = e[0]
                     v = e[1]
@@ -372,6 +387,7 @@ class GroupByKey(WideRDD):
                     rst.append((key, element_new.get(key)))
                 self.data = rst
         self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
+        debug_print("[GroupByKey-RDD] id: {0} self.data={1}".format(self.id, self.data))
         return self.data
 
 
@@ -394,6 +410,7 @@ class ReduceByKey(WideRDD):
             if element == None:
                 return None
             else:
+                debug_print("[ReduceByKey-RDD] input_source={0}, element={1}".format(input_source, element))
                 for e in element:
                     if e[0] in collect:
                         collect[e[0]].append(e[1])
