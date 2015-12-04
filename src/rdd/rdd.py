@@ -1,4 +1,5 @@
 from src.rdd import partition
+from src.util.util_debug import debug_print
 from src.util.util_zerorpc import get_client, execute_command
 
 
@@ -103,14 +104,24 @@ class WideRDD(RDD):
         return 'HashPartition'
 
     def shuffle(self, input_source):
-        result = []
+        results = []
+        debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
         for partition in input_source:
+            debug_print("[Wide-RDD] Shuffling from source {0}".format(partition))
             client = get_client(partition['worker_addr'])
-            result += execute_command(client, client.get_rdd_result,
+            #TODO Here May Return None
+            result=execute_command(client, client.get_rdd_result,
                                       partition['job_id'],
                                       partition['task_id'],
                                       partition['partition_id'])
-        return result
+            print "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee{0}".format(result)
+            while result is None:
+                result=execute_command(client, client.get_rdd_result,
+                                      partition['job_id'],
+                                      partition['task_id'],
+                                      partition['partition_id'])
+            results += result
+        return results
 
 
 class TextFile(RDD):
@@ -120,7 +131,7 @@ class TextFile(RDD):
         TextFile._current_id += 1
         self.data = None
         self.lineage = None
-        self.file_split_info = partition.RangePartition(self.filename, self._config['split_size']).partition()
+        self.file_split_info = partition.RangePartition(self.filename, RDD._config['split_size']).partition()
         self.num_partitions = len(self.file_split_info.values())
         self.num_rst_partitions = None
 
@@ -146,7 +157,8 @@ class TextFile(RDD):
         return partitions
 
     def get(self, input_source):
-        partition_id = input_source[0]['partition_id']
+        debug_print("[TextFile-RDD] InputSource is {0}".format(input_source))
+        partition_id = input_source
         if not self.data:
             f = open(self.filename)
             self.data = self.read_file(f, self.file_split_info[int(partition_id)])
@@ -185,6 +197,8 @@ class Map(NarrowRDD):
         self.lineage = None
 
     def get(self, input_source):
+        debug_print("[Map-RDD] InputSource is {0}".format(input_source))
+
         if not self.data:
             element = self.parent.get(input_source)
             if element == None:
@@ -210,6 +224,8 @@ class Filter(NarrowRDD):
         self.lineage = None
 
     def get(self, input_source):
+        debug_print("[Filter-RDD] InputSource is {0}".format(input_source))
+
         if not self.data:
             elements = self.parent.get(input_source)
             if elements == None:
@@ -236,6 +252,7 @@ class FlatMap(NarrowRDD):
         self.lineage = None
 
     def get(self, input_source):
+        debug_print("[FlatMap-RDD] InputSource is {0}".format(input_source))
         if not self.data:
             element = self.parent.get(input_source)
             if element == None:
@@ -330,7 +347,7 @@ class GroupByKey(WideRDD):
         self.parent = parent
         self.id = "GroupByKey_{0}".format(GroupByKey._current_id)
         GroupByKey._current_id += 1
-        self.num_partitions = self._config['num_partition_GBK']
+        self.num_partitions = RDD._config['num_partition_GBK']
         self.num_rst_partitions = None
         self.data = None
         self.lineage = None
@@ -364,7 +381,7 @@ class ReduceByKey(WideRDD):
         self.id = "ReduceByKey_{0}".format(ReduceByKey._current_id)
         ReduceByKey._current_id += 1
         self.func = func
-        self.num_partitions = self._config['num_partition_RBK']
+        self.num_partitions = RDD._config['num_partition_RBK']
         self.num_rst_partitions = None
         self.data = None
         self.lineage = None

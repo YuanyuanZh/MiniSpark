@@ -18,6 +18,9 @@ class WordCountClient(BasicClient):
         self.filename = filename
 
     def run(self, driver):
+        RDD._config = {'num_partition_RBK': 2,
+                   'num_partition_GBK': 2,
+                   'split_size': 128}
         lines = rdd.TextFile(self.filename)
         f = rdd.FlatMap(lines, lambda x: parse_lines(x))
         m = rdd.Map(f, lambda x: (x, 1))
@@ -25,24 +28,18 @@ class WordCountClient(BasicClient):
         counts.collect(driver)
 
 
+
 if __name__ == '__main__':
-    RDD._config = {'num_partition_RBK': 2,
-                   'num_partition_GBK': 2,
-                   'split_size': 128}
-
-
     master_address = sys.argv[1]
     self_address = sys.argv[2]
     filepath = sys.argv[3]
 
-    word_count_client = WordCountClient("../../wordcount")
+    word_count_client = WordCountClient("/Users/kaijiezhou/Documents/workspaces/Python/DoEnjoy-project3/files/wordcount")
     new_rdd = unpickle_object(pickle_object(word_count_client))
 
 
     client = get_client(master_address)
-    print "====="
     obj = pickle_object(word_count_client)
-    print "====="
     execute_command(client, client.get_job, obj, self_address)
-    print "====="
-    word_count_client.start_server("0.0.0.0:" + self_address.split(":")[1])
+    print "[Client]Job Submited...."
+    word_count_client.start_server("127.0.0.1:" + self_address.split(":")[1])
