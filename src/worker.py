@@ -67,8 +67,7 @@ class Worker():
         master.bind('tcp://' + addr)
         master.run()
 
-    def runPartition(self, task_str):
-        task = unpickle_object(task_str)
+    def runPartition(self, task):
         job_id = task.job_id
         task_id = task.task_id
         # create job if not exist
@@ -86,6 +85,7 @@ class Worker():
             "Start task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
             self.debug)
         result = task.last_rdd.get(task.input_source)
+        debug_print("[Worker] Result of Task {0} is generated:{1}".format(task.task_id, result),self.debug)
         self.all_task_list[job_id][task_id] = {"status": Status.FINISH,
                                                "data": result
                                                }
@@ -96,16 +96,14 @@ class Worker():
     def get_rdd_result(self, job_id, task_id, partition_id):
         if self.all_task_list.has_key(job_id) and self.all_task_list[job_id].has_key(task_id):
             data = self.all_task_list[job_id][task_id]['data']
+
             debug_print(
-            "Get RDD result with job : %s task: %s partition: %s at %s" % (job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
+            "Get RDD result val {0} with job : {1} task: {2} partition: {3} at {4}".format(data, job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
             self.debug)
-            if data is not None:
-                if partition_id is None:
-                    return data
-                else:
-                    if data.has_key(partition_id):
-                        return data[partition_id]
-        return None
+            if isinstance(data, dict):
+                if data.has_key(int(partition_id)):
+                    return data[int(partition_id)]
+        return data
 
     def register(self):
         while self.id is None:
@@ -119,7 +117,9 @@ class Worker():
             else:
                 gevent.sleep(2)
 
-    def start_task(self, task):
+    def start_task(self, serialized_task):
+        task=unpickle_object(serialized_task)
+        debug_print("[Worker] Received Task {0}".format(task.task_id), self.debug)
         self.TaskQueue.put(task)
         return 0
 
@@ -127,11 +127,10 @@ class Worker():
         while True:
             while not self.TaskQueue.empty():
                 task = self.TaskQueue.get()
-                # print "Create map thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
+                print "Create thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
                 thread = gevent.spawn(self.runPartition, task)
-                debug_print("Task created: Key: %d at %s" % (
-                    task.partition_id, time.asctime(time.localtime(time.time()))), self.debug)
-                print
+                debug_print("Task created: Key: {0} at {1}".format(
+                    task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
             gevent.sleep(0)
 
     def heartbeat(self):
@@ -164,7 +163,7 @@ class Worker():
         self.register()
         # self.startRPCServer()
         thread1 = gevent.spawn(self.heartbeat)
-        thread2 = gevent.spawn(self.TaskManager())
+        thread2 = gevent.spawn(self.TaskManager)
         thread3 = gevent.spawn(self.startRPCServer)
         # self.startRPCServer()
         gevent.joinall([thread1, thread3, thread2])

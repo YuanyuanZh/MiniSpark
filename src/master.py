@@ -55,8 +55,11 @@ class Master():
     def assign_task(self, task, worker_id):
         task_str = pickle_object(task)
         worker_address = self.worker_list[worker_id]['address']
+        debug_print("[Master] Sending Task {0} to Worker {1}, address {2}".format(task.task_id, worker_id, worker_address), self.debug)
         client = get_client(worker_address)
-        ret = execute_command(client,client.start_task,task_str)
+        ret = execute_command(client, client.start_task, task_str)
+        debug_print("[Master] Sent Task {0} to Worker {1} with return val {2}".format(task.task_id, worker_id, ret), self.debug)
+
         if ret == 0:
             self.worker_list[worker_id]['num_slots'] -= 1
             debug_print("Assign task successfully: worker_id: %s job: %s task: %s at %s" % (
@@ -165,26 +168,27 @@ class Master():
 
     def get_job(self, job, client_address):
         #TODO make a dict {job_id: client_info} and Gevent
-        try:
-            job_id = self.job_id
-            driver = SparkDriver(job_id)
-            self.job_list[job_id] = unpickle_object(job)
-            self.job_list[job_id].run(driver)
-            self.driver_list[job_id] = (driver,client_address)
-            self.job_id += 1
-        except Exception as e:
-            debug_print("Create job: %s from client: %s failed  with %s at %s" % (
-            self.job_id, client_address, str(e), time.asctime(time.localtime(time.time()))), self.debug)
-            return -1
+        #try:
+        job_id = self.job_id
+        driver = SparkDriver(job_id)
+        self.job_list[job_id] = unpickle_object(job)
+        self.job_list[job_id].run(driver)
+        self.driver_list[job_id] = (driver,client_address)
+        self.job_id += 1
+        #except Exception as e:
+            # debug_print("Create job: %s from client: %s failed  with %s at %s" % (
+            # self.job_id, client_address, sys.exc_info(), time.asctime(time.localtime(time.time()))), self.debug)
+            # sys.exc_traceback
+            # return -1
         return self.job_id
 
     def return_client(self, job_id, result):
         if self.driver_list.has_key(job_id):
             client_address = self.driver_list[job_id][1]
             client = get_client(client_address)
-            debug_print("Finish job: %s for client %s at %s" % (
+            debug_print("[Master] Finish job: %s for client %s at %s" % (
             job_id, client_address, time.asctime(time.localtime(time.time()))), self.debug)
-            execute_command(client, client._print_message, 'Finish job with result: ' + result)
+            execute_command(client, client.recieve_msg, 'Finish job with result: {0}'.format(result))
 
 
     # def produce_new_driver(self, job_id):
@@ -199,7 +203,7 @@ if __name__ == '__main__':
     elif len(sys.argv) == 2:
         debug = False
     master = Master(port, debug)
-    #SparkDriver._master = master
+    SparkDriver._master = master
     master.run()
     # rpc_server = zerorpc.Server(master)
     # addr = "tcp://0.0.0.0:" + port
