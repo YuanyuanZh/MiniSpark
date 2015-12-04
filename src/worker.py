@@ -164,7 +164,7 @@ class Worker():
         self.register()
         # self.startRPCServer()
         thread1 = gevent.spawn(self.heartbeat)
-        thread2 = gevent.spawn(self.TaskManager())
+        thread2 = gevent.spawn(self.TaskManager)
         thread3 = gevent.spawn(self.startRPCServer)
         # self.startRPCServer()
         gevent.joinall([thread1, thread3, thread2])
