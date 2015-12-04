@@ -156,7 +156,7 @@ class Worker():
                         for job_id, task_list in self.all_task_list.items():
                             for task_id, value in task_list.items():
                                 if value['status'] == Status.FINISH:
-                                    task_status_list[job_id][task_id] = Status.FINISH_REPORTED
+                                    value['status'] = Status.FINISH_REPORTED
             gevent.sleep(2)
 
     def run(self):
