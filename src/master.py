@@ -52,7 +52,7 @@ class Master():
     def get_worker_list(self):
         return self.worker_list
 
-    def assign_task(self, task, worker_id):
+    def assign_task(self, worker_id, task):
         task_str = pickle_object(task)
         worker_address = self.worker_list[worker_id]['address']
         debug_print("[Master] Sending Task {0} to Worker {1}, address {2}".format(task.task_id, worker_id, worker_address), self.debug)
