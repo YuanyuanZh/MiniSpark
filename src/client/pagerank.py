@@ -36,7 +36,7 @@ class PageRankClient(BasicClient):
         m = rdd.Map(t, (lambda urls: parseNeighbors(urls)))
         links = rdd.GroupByKey(m)
         ranks = rdd.Map(links, lambda url_neighbors: (url_neighbors[0], 1.0))
-        for iteration in range(1):
+        for iteration in range(2):
             joins = rdd.Join([links, ranks])
             contribs = rdd.FlatMap(joins,
                                    lambda url_urls_rank: computeContribs(url_urls_rank[1][0], url_urls_rank[1][1]))

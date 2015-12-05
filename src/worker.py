@@ -82,7 +82,7 @@ class Worker():
                                                    "data": None
                                                    }
         debug_print(
-            "Start task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
+            "[Worker]Start task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
             self.debug)
         result = task.last_rdd.get(task.input_source)
         debug_print("[Worker] Result of Task {0} is generated:{1}".format(task.task_id, result),self.debug)
@@ -90,7 +90,7 @@ class Worker():
                                                "data": result
                                                }
         debug_print(
-            "Finish task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
+            "[Worker]Finish task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
             self.debug)
 
     def get_rdd_result(self, job_id, task_id, partition_id):
@@ -98,9 +98,9 @@ class Worker():
         if self.all_task_list.has_key(job_id) and self.all_task_list[job_id].has_key(task_id):
             data = self.all_task_list[job_id][task_id]['data']
             debug_print(
-            "Get RDD result val {0} with job : {1} task: {2} partition: {3} at {4}".format(data, job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
+            "[Worker]Get RDD result val {0} with job : {1} task: {2} partition: {3} at {4}".format(data, job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
             self.debug)
-            print "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%data={0}, partition_id={1} isDict={2}".format(data, partition_id, isinstance(data, dict))
+            #print "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%data={0}, partition_id={1} isDict={2}".format(data, partition_id, isinstance(data, dict))
             if isinstance(data, dict):
                 if data.has_key(int(partition_id)):
                     return data[int(partition_id)]
@@ -148,7 +148,7 @@ class Worker():
                             task_status_list[job_id][task_id] = value['status']
 
                 client = get_client(self.master_address)
-                debug_print("Worker update task status: worker_id: %s at %s" % (
+                debug_print("[Worker]Worker update task status: worker_id: %s at %s" % (
                     self.id, time.asctime(time.localtime(time.time()))), self.debug)
                 ret = execute_command(client, client.updateWorkerStatus, self.id, task_status_list)
                 # ret = client.updateWorkerStatus(self.id, task_status_list)
