@@ -57,7 +57,8 @@ class SparkDriver:
 
     def fault_handler(self, worker_id):
         debug_print("[Worker] Worker {0} is down!".format(worker_id))
-        task_node_table_keys = filter(lambda a: self.task_node_table[a] == worker_id, self.task_node_table.keys())
+        print "XXXXXXXXXXXXXXXX{0}".format(self.task_node_table)
+        task_node_table_keys = filter(lambda a: self.task_node_table[a]["worker_id"] == worker_id, self.task_node_table.keys())
         task_node_table_keys.sort(lambda a, b: cmp(int(a.split('_')[1]), int(b.split('_')[1])))
         for job_task_id in task_node_table_keys:
             task_id = job_task_id.split('_', 1)[1]
@@ -66,6 +67,7 @@ class SparkDriver:
                     task = task_i
                     break
             ret=self.assign_task(task)
+            #Block Here
             while ret is not 0:
                 gevent.sleep(0.5)
                 ret=self.assign_task(task)
@@ -84,7 +86,7 @@ class SparkDriver:
         while worker_info is None:
             worker_info = self._master.get_available_worker()
             gevent.sleep(0.5)
-
+        ##Fault Tolerant cannot reach here
         #Update future tasks that may use this task as resource
         # for t in self.task_list.keys():
         #     if isinstance(t.input_source, list):
