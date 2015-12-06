@@ -25,6 +25,17 @@ class SparkDriver:
         # self.result_ready = gevent.event.Event()
         # self.result_ready.clear()
 
+    def assign_task_list(self, tasks):
+        for task in tasks:
+            #gevent.spawn(self.assign_task, task)
+            ret = self.assign_task(task)
+            while ret is not 0:
+                gevent.sleep(0.5)
+                ret = self.assign_task(task)
+
+            self.updata_all_node_table()
+
+
 
     def do_drive(self, last_rdd, action_name, *args):
         self.action = self.actions[action_name]
@@ -42,12 +53,7 @@ class SparkDriver:
         tasks = self.task_list.keys()
         tasks.sort(lambda x,y: cmp(int(x.task_id.split("_")[0]), int(y.task_id.split("_")[0])))
         #print "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{0}".format(tasks[0].task_id)
-        for task in tasks:
-            #gevent.spawn(self.assign_task, task)
-            ret = self.assign_task(task)
-            while ret is not 0:
-                gevent.sleep(0.5)
-                ret = self.assign_task(task)
+        gevent.spawn(self.assign_task_list, tasks)
 
         # self.result_ready.wait()
         # return self.action(args)
@@ -60,22 +66,24 @@ class SparkDriver:
         print "XXXXXXXXXXXXXXXX{0}".format(self.task_node_table)
         task_node_table_keys = filter(lambda a: self.task_node_table[a]["worker_id"] == worker_id, self.task_node_table.keys())
         task_node_table_keys.sort(lambda a, b: cmp(int(a.split('_')[1]), int(b.split('_')[1])))
+        task_list = []
+
+
         for job_task_id in task_node_table_keys:
             task_id = job_task_id.split('_', 1)[1]
             for task_i in self.task_list.keys():
                 if task_i.task_id == task_id:
-                    task = task_i
+                    task_list.append(task_i)
                     break
-            ret=self.assign_task(task)
-            #Block Here
-            while ret is not 0:
-                gevent.sleep(0.5)
-                ret=self.assign_task(task)
 
-        for worker in self._master.worker_list:
-            self._master.update_task_node_table(worker.worker_id, self.task_node_table)
+        gevent.spawn(self.assign_task_list, task_list)
 
-#        self.task_node_table.__delitem__(worker_id)
+
+    def updata_all_node_table(self):
+        for worker_id in self._master.worker_list.keys():
+            self._master.update_task_node_table(worker_id,
+                                                self.task_node_table)
+
 
     def assign_task(self, task):
         """Assign the stages list to Master Node,
@@ -84,26 +92,11 @@ class SparkDriver:
 
         worker_info = None
         while worker_info is None:
-            worker_info = self._master.get_available_worker()
             gevent.sleep(0.5)
-        ##Fault Tolerant cannot reach here
-        #Update future tasks that may use this task as resource
-        # for t in self.task_list.keys():
-        #     if isinstance(t.input_source, list):
-        #         for s in t.input_source:
-        #             if s['task_id']==task.task_id:
-        #                 debug_print("[SparkDriver] Modify a related future Task {0}".format(t.task_id), self._master.debug)
-        #                 s['worker_addr']=worker_info['address']
-        # task.worker = worker_info
+            worker_info = self._master.get_available_worker()
 
         unique_task_id = '{job_id}_{task_id}'.format(job_id=self.job_id, task_id=task.task_id)
         self.task_node_table[unique_task_id] = worker_info
-
-        # if self.task_node_table.has_key(worker_info["worker_id"]):
-        #     self.task_node_table[]
-        #     self.task_node_table[worker_info["worker_id"]].append(task)
-        # else:
-        #     self.task_node_table[worker_info["worker_id"]] = [task]
 
         ret=self._master.assign_task(worker_info['worker_id'], task, self.task_node_table)
         if ret==0:

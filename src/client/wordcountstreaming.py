@@ -63,8 +63,9 @@ def send_word(job_id, master_addr):
 
 
 class StreamingWordCountClient(StreamingClient):
-    def __init__(self, filename):
+    def __init__(self, filename, interval):
         self.filename = filename
+        self.interval = interval
 
     def run(self, driver):
         RDD._config = {'num_partition_RBK': 2,
@@ -80,9 +81,9 @@ class StreamingWordCountClient(StreamingClient):
 
 
 if __name__ == '__main__':
-    name, master_address, self_address = sys.argv
+    name, master_address, self_address, interval = sys.argv
     # word count streaming client
-    word_count_client = StreamingWordCountClient(master_address)
+    word_count_client = StreamingWordCountClient(master_address, int(interval))
     obj = pickle_object(word_count_client)
 
     # assign job
