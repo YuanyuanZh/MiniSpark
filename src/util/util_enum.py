@@ -35,3 +35,4 @@ class Event(Enum):
     FINISH_TASK = 3
     WORKER_DOWN = 4
     FINISH_JOB = 5
+    ASSIGN_TASK = 6
