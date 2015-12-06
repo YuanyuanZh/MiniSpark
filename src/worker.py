@@ -122,8 +122,10 @@ class Worker():
             else:
                 gevent.sleep(2)
 
-    def start_task(self, serialized_task, task_node_table):
-        task = unpickle_object(serialized_task)
+
+    def start_task(self, serialized_task,task_node_table):
+        task=unpickle_object(serialized_task)
+        task.input_source['task_node_table'] = self.task_node_table
         debug_print("[Worker] Received Task {0}".format(task.task_id), self.debug)
         # event = {
         #     'type' : 'Update',

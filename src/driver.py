@@ -52,9 +52,20 @@ class SparkDriver:
         self.result_ready.set()
 
     def fault_handler(self, worker_id):
-        for task in self.task_node_table[worker_id]:
-            gevent.spawn(self.assign_task, task)
-        self.task_node_table.__delitem__(worker_id)
+        task_node_table_keys = filter(lambda a: self.task_node_table[a] == worker_id, self.task_node_table.keys())
+        task_node_table_keys.sort(lambda a, b: cmp(int(a.split('_')[1]), int(b.split('_')[1])))
+        for job_task_id in task_node_table_keys:
+            task_id = job_task_id.split('_', 1)[1]
+            for task_i in self.task_list.keys():
+                if task_i.task_id == task_id:
+                    task = task_i
+                    break
+            self.assign_task(task)
+
+        for worker in self._master.worker_list:
+            self._master.update_task_node_table(worker.worker_id, self.task_node_table)
+
+#        self.task_node_table.__delitem__(worker_id)
 
     def assign_task(self, task):
         """Assign the stages list to Master Node,
@@ -99,7 +110,7 @@ class SparkDriver:
         prev = lineage[0][0]
         stage_start = lineage[0][0]
         for rdd, rdd_id in lineage[1:]:
-            if isinstance(rdd, WideRDD) or isinstance(rdd, InputRDD):
+            if isinstance(rdd, WideRDD) or isinstance(rdd, InputRDD) or isinstance(rdd, MultiParentNarrowRDD):
                 self.task_list.update(self.gen_stage_tasks(stage_start, prev, cur_stage_id))
                 cur_stage_id += 1
                 stage_start = rdd
@@ -125,7 +136,7 @@ class SparkDriver:
             if isinstance(start_rdd, InputRDD):
                 # TextFile data source
                 input_source = str(cur_par_id)
-            elif isinstance(start_rdd, WideRDD):
+            elif isinstance(start_rdd, WideRDD) or isinstance(start_rdd, MultiParentNarrowRDD):
                 # Shuffle data source\
                 input_source = []
                 if not isinstance(start_rdd.parent, list):
@@ -149,8 +160,8 @@ class SparkDriver:
                                         debug_print("[SparkDriver]Find Shuffle Parent Task {0} For Task{1} ".format(task.task_id, "{0}_{1}".format(cur_stage_id, cur_par_id)))
                                         elem_dict['task_id']=task.task_id
                                 input_source.append(elem_dict)
-            # else:
-            #     input_source = None
+
+
             tasks.update({Task(last_rdd, input_source, "{0}_{1}".format(cur_stage_id, cur_par_id), self.job_id): 'New'})
         return tasks
 

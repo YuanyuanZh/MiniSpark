@@ -88,6 +88,29 @@ class MultiParentNarrowRDD(NarrowRDD):
     def __init__(self):
         pass
 
+    def shuffle(self, input_source):
+        results = []
+        #debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
+        for partitions in input_source:
+            debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, partitions))
+            if not isinstance(partitions, list):
+                partitions=[partitions]
+            for p in partitions:
+                result=None
+                #TODO Here May Return None
+                while result is None:
+                    task_node_table=input_source["task_node_table"]
+                    worker_id= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["worker_id"]
+                    client = get_client(worker_id)
+                    debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
+                    result=execute_command(client, client.get_rdd_result,
+                                          p['job_id'],
+                                          p['task_id'],
+                                          p['partition_id'])
+                debug_print("[Shuffle] {0} get a result={1} from {2}, at Part {3}".format(self.id, result,  p['task_id'],p['partition_id']))
+                results += result
+        return results
+
 
 class WideRDD(RDD):
 
@@ -122,13 +145,12 @@ class WideRDD(RDD):
             if not isinstance(partitions, list):
                 partitions=[partitions]
             for p in partitions:
-                client = get_client(p['worker_addr'])
+                result=None
                 #TODO Here May Return None
-                result=execute_command(client, client.get_rdd_result,
-                                          p['job_id'],
-                                          p['task_id'],
-                                          p['partition_id'])
                 while result is None:
+                    task_node_table=input_source["task_node_table"]
+                    worker_id= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["worker_id"]
+                    client = get_client(worker_id)
                     debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
                     result=execute_command(client, client.get_rdd_result,
                                           p['job_id'],
@@ -283,7 +305,7 @@ class FlatMap(NarrowRDD):
         return self.data
 
 
-class Join(WideRDD):
+class Join(MultiParentNarrowRDD):
     def __init__(self, parent):
         self.parent = parent
         self.id = "Join_{0}".format(Join._current_id)
@@ -320,22 +342,22 @@ class Join(WideRDD):
         debug_print("[Join-RDD] id: {0} self.input_source={1} self.data={2}".format(self.id, input_source, self.data))
         return self.data
 
-    # def partitions(self):
-    #     partitions = self.parent[0].partitions()
-    #     self.num_partitions = self.parent[0].num_partitions
-    #     index = self.lineage.index((self, self.id))
-    #     if index + 1 < len(self.lineage):
-    #         next_op = self.lineage[index + 1]
-    #         if isinstance(next_op[0], WideRDD):
-    #             new_partitions = []
-    #             for i in range(self.num_partitions):
-    #                 sub = []
-    #                 for j in range(next_op[0].num_partitions):
-    #                     self.num_rst_partitions = next_op[0].num_partitions
-    #                     sub.append(str(i) + '_' + str(j))
-    #                 new_partitions.append(sub)
-    #             partitions = new_partitions
-    #     return partitions
+    def partitions(self):
+        partitions = self.parent[0].partitions()
+        self.num_partitions = self.parent[0].num_partitions
+        index = self.lineage.index((self, self.id))
+        if index + 1 < len(self.lineage):
+            next_op = self.lineage[index + 1]
+            if isinstance(next_op[0], WideRDD):
+                new_partitions = []
+                for i in range(self.num_partitions):
+                    sub = []
+                    for j in range(next_op[0].num_partitions):
+                        self.num_rst_partitions = next_op[0].num_partitions
+                        sub.append(str(i) + '_' + str(j))
+                    new_partitions.append(sub)
+                partitions = new_partitions
+        return partitions
 
 
 class MapValue(NarrowRDD):
