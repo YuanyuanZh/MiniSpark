@@ -169,7 +169,6 @@ class WideRDD(RDD):
                 source=[source]
             for p in source:
                 result=None
-                #TODO Here May Return None
                 while result is None:
                     task_node_table=p["task_node_table"]
                     worker_address= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["address"]

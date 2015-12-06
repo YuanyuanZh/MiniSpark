@@ -19,3 +19,7 @@ class BasicClient(object):
 
     def recieve_msg(self, message):
         BasicClient._print_message(message)
+
+
+class StreamingClient(BasicClient):
+    pass

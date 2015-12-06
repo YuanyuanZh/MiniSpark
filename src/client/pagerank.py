@@ -54,4 +54,5 @@ if __name__ == '__main__':
     # page_rank_client = PageRankClient(sys.argv[1])
     client = get_client(master_address)
     execute_command(client, client.get_job, pickle_object(page_rank_client), self_address)
+    print "[Client]Job Submited...."
     page_rank_client.start_server(self_address)

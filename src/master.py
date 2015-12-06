@@ -7,7 +7,9 @@ import random
 from gevent.lock import *
 import time
 import os
+from src.client.basicclient import StreamingClient
 from src.driver import SparkDriver
+from src.driver import StreamingDriver
 
 from util.util_enum import *
 from util.util_debug import *
@@ -29,8 +31,7 @@ class Master():
         self.driver_list = {}
         self.task_event_list = {}
         self.worker_event_list = {}
-
-
+        self.streaming_data = {}
 
     def registerWorker(self, worker_address):
         self.worker_id += 1
@@ -41,7 +42,7 @@ class Master():
             'worker_address': worker_address
         }
         self.reportEvent(Event.REGISTER, event_object)
-        debug_print( "Report Worker %s %s registration at %s" % (
+        debug_print("Report Worker %s %s registration at %s" % (
             worker_id, worker_address, time.asctime(time.localtime(time.time()))), self.debug)
         # debug_print( "Worker %s %s registered at %s" % (
         #     self.worker_id, worker_address, time.asctime(time.localtime(time.time()))), self.debug)
@@ -57,14 +58,14 @@ class Master():
             'num_slots': 5
         }
         self.worker_list[worker_id] = worker
-        debug_print( "Process worker %s %s registered at %s" % (
+        debug_print("Process worker %s %s registered at %s" % (
             worker['worker_id'], worker['address'], time.asctime(time.localtime(time.time()))), self.debug)
         self.worker_event_list[worker_id].set()
         # return self.worker_id
 
     def get_available_worker(self):
         for worker_id, worker in self.worker_list.items():
-            if worker['num_slots'] > 0 :
+            if worker['num_slots'] > 0:
                 return worker
         return None
 
@@ -78,7 +79,7 @@ class Master():
         return ret
 
     def assign_task(self, worker_id, task, task_node_table):
-        key = task.job_id + '_' + task.task_id
+        key = '{0}_{1}'.format(task.job_id, task.task_id)
         self.task_event_list[key] = AsyncResult()
         event_object = {
             'worker_id': worker_id,
@@ -86,27 +87,29 @@ class Master():
             'task_node_table': task_node_table
         }
         self.reportEvent(Event.ASSIGN_TASK, event_object)
-        debug_print( "Report assign task %s at %s" % (
+        debug_print("Report assign task %s at %s" % (
             task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
         ret = self.task_event_list[key].get()
         return ret
 
-
     def assign_task_execute(self, worker_id, task, task_node_table):
         task_str = pickle_object(task)
         worker_address = self.worker_list[worker_id]['address']
-        debug_print("[Master] Sending Task {0} to Worker {1}, address {2}".format(task.task_id, worker_id, worker_address), self.debug)
+        debug_print(
+            "[Master] Sending Task {0} to Worker {1}, address {2}".format(task.task_id, worker_id, worker_address),
+            self.debug)
         client = get_client(worker_address)
         ret = execute_command(client, client.start_task, task_str, task_node_table)
-        debug_print("[Master] Sent Task {0} to Worker {1} with return val {2}".format(task.task_id, worker_id, ret), self.debug)
+        debug_print("[Master] Sent Task {0} to Worker {1} with return val {2}".format(task.task_id, worker_id, ret),
+                    self.debug)
 
         if ret == 0:
             self.worker_list[worker_id]['num_slots'] -= 1
             debug_print("Assign task successfully: worker_id: %s job: %s task: %s at %s" % (
-                            worker_id, task.job_id, task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
+                worker_id, task.job_id, task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
         else:
             ret = 1
-        key = task.job_id + '_' + task.task_id
+        key = '{0}_{1}'.format(task.job_id, task.task_id)
         self.task_event_list[key].set(ret)
 
     def get_rdd_result(self, task, worker_info, partition_id):
@@ -116,11 +119,9 @@ class Master():
         client = get_client(worker_address)
         data = execute_command(client, client.get_rdd_result, job_id, task_id, partition_id)
         debug_print("Get RDD result task: job: %s task: %s at %s" % (
-                            job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
+            job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
 
         return data
-
-
 
     def heartBeat(self):
         # print "enter heartbeat : at %s" %time.asctime( time.localtime(time.time()) )
@@ -158,15 +159,15 @@ class Master():
         self.event_queue.put(event)
 
     def process_worker_down(self, worker_id):
-        if self.worker_list.has_key(worker_id) :
-            if self.worker_list[worker_id] is not None :
+        if self.worker_list.has_key(worker_id):
+            if self.worker_list[worker_id] is not None:
                 del self.worker_list[worker_id]
                 # self.worker_list[worker_id]['num_slots'] == 0
                 for job_id in self.driver_list.keys():
                     self.driver_list[job_id][0].fault_handler(worker_id)
                     # self.reportEvent(Event.WORKER_DOWN, worker_id)
                     debug_print("Process Worker Down: worker_id: %s at %s" % (
-                            worker_id, time.asctime(time.localtime(time.time()))), self.debug)
+                        worker_id, time.asctime(time.localtime(time.time()))), self.debug)
 
     def finish_task_execute(self, job_id, task_id, worker_id):
         if self.worker_list[worker_id] is not None:
@@ -176,26 +177,27 @@ class Master():
                 driver.finish_task(task_id)
                 # self.reportEvent(Event.FINISH_TASK, key)
                 debug_print("Process Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
-                        worker_id, job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
+                    worker_id, job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
 
     def event_handler(self):
         while True:
             while not self.event_queue.empty():
                 event = self.event_queue.get()
                 if event['type'] == Event.REGISTER:
-                    self.register_worker_execute(event['event_object']['worker_id'],event['event_object']['worker_address'])
+                    self.register_worker_execute(event['event_object']['worker_id'],
+                                                 event['event_object']['worker_address'])
                 if event['type'] == Event.ASSIGN_TASK:
                     event_object = event['event_object']
                     worker_id = event_object['worker_id']
                     task = event_object['task']
                     task_node_table = event_object['task_node_table']
-                    self.assign_task_execute(worker_id,task,task_node_table)
+                    self.assign_task_execute(worker_id, task, task_node_table)
                 if event['type'] == Event.FINISH_TASK:
                     event_object = event['event_object']
                     job_id = event_object['job_id']
                     task_id = event_object['task_id']
                     worker_id = event_object['worker_id']
-                    self.finish_task_execute(job_id,task_id,worker_id)
+                    self.finish_task_execute(job_id, task_id, worker_id)
                 if event['type'] == Event.WORKER_DOWN:
                     self.process_worker_down(event['event_object'])
             gevent.sleep(0)
@@ -237,7 +239,7 @@ class Master():
                         worker_id, job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
         return 0
 
-    def find_driver(self,job_id):
+    def find_driver(self, job_id):
         if self.driver_list.has_key(job_id):
             return self.driver_list[job_id][0]
         else:
@@ -245,12 +247,12 @@ class Master():
 
     def run(self):
         thread1 = gevent.spawn(self.heartBeat)
-        debug_print("Heartbeat started at %s" %(time.asctime( time.localtime(time.time()))),self.debug)
+        debug_print("Heartbeat started at %s" % (time.asctime(time.localtime(time.time()))), self.debug)
         thread2 = gevent.spawn(self.rpcServer)
-        debug_print("RPC server started at %s" %(time.asctime( time.localtime(time.time()))), self.debug)
+        debug_print("RPC server started at %s" % (time.asctime(time.localtime(time.time()))), self.debug)
         thread3 = gevent.spawn(self.event_handler)
-        debug_print("Event handler started at %s" %(time.asctime( time.localtime(time.time()))), self.debug)
-        gevent.joinall([thread1,thread2, thread3])
+        debug_print("Event handler started at %s" % (time.asctime(time.localtime(time.time()))), self.debug)
+        gevent.joinall([thread1, thread2, thread3])
         # gevent.joinall([gevent.spawn(self.jobScheduler()), gevent.spawn(self.heartBeat()), gevent.spawn(self.collectJobResult())])
 
     def rpcServer(self):
@@ -264,19 +266,23 @@ class Master():
         # print "rpc run"
 
     def get_job(self, job, client_address):
-        #TODO make a dict {job_id: client_info} and Gevent
-        #try:
+        # TODO make a dict {job_id: client_info} and Gevent
+        # try:
         job_id = self.job_id
-        driver = SparkDriver(job_id)
         self.job_list[job_id] = unpickle_object(job)
-        self.job_list[job_id].run(driver)
-        self.driver_list[job_id] = (driver,client_address)
+        if isinstance(self.job_list[job_id], StreamingClient):
+            #debug_print_by_name('wentao', '[Get Job] This is spark streaming client')
+            driver = StreamingDriver(job_id)
+        else:
+            driver = SparkDriver(job_id)
+        self.driver_list[job_id] = (driver, client_address)
+        gevent.spawn(self.job_list[job_id].run, driver)
         self.job_id += 1
-        #except Exception as e:
-            # debug_print("Create job: %s from client: %s failed  with %s at %s" % (
-            # self.job_id, client_address, sys.exc_info(), time.asctime(time.localtime(time.time()))), self.debug)
-            # sys.exc_traceback
-            # return -1
+        # except Exception as e:
+        # debug_print("Create job: %s from client: %s failed  with %s at %s" % (
+        # self.job_id, client_address, sys.exc_info(), time.asctime(time.localtime(time.time()))), self.debug)
+        # sys.exc_traceback
+        # return -1
         return self.job_id
 
     def return_client(self, job_id, result):
@@ -284,12 +290,22 @@ class Master():
             client_address = self.driver_list[job_id][1]
             client = get_client(client_address)
             debug_print("[Master] Finish job: %s for client %s at %s" % (
-            job_id, client_address, time.asctime(time.localtime(time.time()))), self.debug)
+                job_id, client_address, time.asctime(time.localtime(time.time()))), self.debug)
             execute_command(client, client.recieve_msg, 'Finish job with result: {0}'.format(result))
 
+    def send_partition(self, streaming_data):
+        job_id, worker_id, partition_id = streaming_data.split(',')
+        if job_id not in self.streaming_data:
+            self.streaming_data[job_id] = {}
+        if worker_id not in self.streaming_data:
+            self.streaming_data[job_id][worker_id] = []
+        if partition_id not in self.streaming_data[worker_id]:
+            self.streaming_data[job_id][worker_id].append(partition_id)
 
-    # def produce_new_driver(self, job_id):
-    #     return SparkDriver()
+        print(self.streaming_data)
+            # def produce_new_driver(self, job_id):
+            #     return SparkDriver()
+
 
 if __name__ == '__main__':
     status = Worker_Status.UP
@@ -308,5 +324,3 @@ if __name__ == '__main__':
     # print "rpc run 1"
     # rpc_server.run()
     # print "rpc run"
-
-
