@@ -64,11 +64,13 @@ class Master():
         # return self.worker_id
 
     def get_available_worker(self):
-
+        candidate_worker = None
+        max_slot = 0
         for worker_id, worker in self.worker_list.items():
-            if worker['num_slots'] > 0:
-                return worker
-        return None
+            if worker['num_slots'] > max_slot:
+                max_slot = worker['num_slots']
+                candidate_worker = worker
+        return candidate_worker
 
     def get_worker_list(self):
         return self.worker_list
@@ -266,18 +268,25 @@ class Master():
         rpc_server.run()
         # print "rpc run"
 
+    def run_loop_job(self, job_id, driver):
+        while True:
+            gevent.spawn(self.job_list[job_id].run, driver)
+            gevent.sleep(self.job_list[job_id].interval)
+
+
     def get_job(self, job, client_address):
         # TODO make a dict {job_id: client_info} and Gevent
         # try:
         job_id = self.job_id
         self.job_list[job_id] = unpickle_object(job)
         if isinstance(self.job_list[job_id], StreamingClient):
-            #debug_print_by_name('wentao', '[Get Job] This is spark streaming client')
             driver = StreamingDriver(job_id)
+            gevent.spawn(self.job_list[job_id].run, driver)
         else:
             driver = SparkDriver(job_id)
+            gevent.spawn(self.run_loop_job, job_id, driver)
+
         self.driver_list[job_id] = (driver, client_address)
-        gevent.spawn(self.job_list[job_id].run, driver)
         self.job_id += 1
         # except Exception as e:
         # debug_print("Create job: %s from client: %s failed  with %s at %s" % (
