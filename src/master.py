@@ -71,8 +71,8 @@ class Master():
             debug_print("Assign task successfully: worker_id: %s job: %s task: %s at %s" % (
                             worker_id, task.job_id, task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
 
-    def get_rdd_result(self, task, partition_id):
-        worker_address = task.worker['address']
+    def get_rdd_result(self, task, worker_info, partition_id):
+        worker_address = worker_info['address']
         job_id = task.job_id
         task_id = task.task_id
         client = get_client(worker_address)
