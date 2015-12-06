@@ -276,7 +276,7 @@ class Master():
         else:
             driver = SparkDriver(job_id)
         self.driver_list[job_id] = (driver, client_address)
-        #gevent.spawn(self.job_list[job_id].run, driver)
+        gevent.spawn(self.job_list[job_id].run, driver)
         self.job_id += 1
         # except Exception as e:
         # debug_print("Create job: %s from client: %s failed  with %s at %s" % (
