@@ -140,17 +140,17 @@ class WideRDD(RDD):
     def shuffle(self, input_source):
         results = []
         #debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
-        for partitions in input_source:
-            debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, partitions))
-            if not isinstance(partitions, list):
-                partitions=[partitions]
-            for p in partitions:
+        for source in input_source:
+            debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, source))
+            if not isinstance(source, list):
+                source=[source]
+            for p in source:
                 result=None
                 #TODO Here May Return None
                 while result is None:
-                    task_node_table=input_source["task_node_table"]
-                    worker_id= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["worker_id"]
-                    client = get_client(worker_id)
+                    task_node_table=p["task_node_table"]
+                    worker_address= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["address"]
+                    client = get_client(worker_address)
                     debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
                     result=execute_command(client, client.get_rdd_result,
                                           p['job_id'],
@@ -195,7 +195,7 @@ class TextFile(InputRDD):
 
     def get(self, input_source):
         debug_print("[TextFile-RDD] id={0} InputSource is {1}, data={2}".format(self.id, input_source, self.data))
-        partition_id = input_source
+        partition_id = input_source[0]["partition_id"]
         if not self.data:
             f = open(self.filename)
             self.data = self.read_file(f, self.file_split_info[int(partition_id)])

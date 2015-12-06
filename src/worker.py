@@ -27,7 +27,7 @@ class Worker():
         self.debug = debug
         self.streaming_data = {}
         self.event_queue = Queue()
-        self.task_node_table = None
+        self.task_node_table = {}
 
     def getMyAddress(self):
         try:
@@ -125,7 +125,8 @@ class Worker():
 
     def start_task(self, serialized_task,task_node_table):
         task=unpickle_object(serialized_task)
-        task.input_source['task_node_table'] = self.task_node_table
+        for source in task.input_source:
+            source['task_node_table'] = self.task_node_table
         debug_print("[Worker] Received Task {0}".format(task.task_id), self.debug)
         # event = {
         #     'type' : 'Update',
@@ -157,11 +158,10 @@ class Worker():
             while not self.event_queue.empty():
                 task_node_table = self.event_queue.get()
                 #update task_node_table
-                if self.task_node_table is None :
-                    self.task_node_table = task_node_table
-                else :
-                    for job_task_id, worker_info in  task_node_table :
-                        self.task_node_table[job_task_id] = worker_info
+                print "********************************************************************"
+                self.task_node_table.update(task_node_table)
+                # for job_task_id, worker_info in  task_node_table :
+                #     self.task_node_table[job_task_id] = worker_info
             gevent.sleep(0)
 
     def heartbeat(self):
@@ -194,10 +194,11 @@ class Worker():
         self.register()
         # self.startRPCServer()
         thread1 = gevent.spawn(self.heartbeat)
-        thread2 = gevent.spawn(self.task_manager)
-        thread3 = gevent.spawn(self.startRPCServer)
+        thread2 = gevent.spawn(self.event_handler)
+        thread3 = gevent.spawn(self.task_manager)
+        thread4 = gevent.spawn(self.startRPCServer)
         # self.startRPCServer()
-        gevent.joinall([thread1, thread3, thread2])
+        gevent.joinall([thread1, thread2, thread3, thread4])
 
 
 if __name__ == '__main__':
