@@ -362,7 +362,9 @@ class Join(MultiParentNarrowRDD):
                 else:
                     result[key]=[value]
             for k in result.keys():
-                self.data.append((k, result[k]))
+                v=result[k]
+                if(len(v)==len(self.parent)):
+                    self.data.append((k, result[k]))
             # if element1 == None or element2 == None:
             #     return None
             # else:

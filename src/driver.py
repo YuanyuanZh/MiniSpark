@@ -53,6 +53,7 @@ class SparkDriver:
         self.result_ready.set()
 
     def fault_handler(self, worker_id):
+        debug_print("[Worker] Worker {0} is down!".format(worker_id))
         task_node_table_keys = filter(lambda a: self.task_node_table[a] == worker_id, self.task_node_table.keys())
         task_node_table_keys.sort(lambda a, b: cmp(int(a.split('_')[1]), int(b.split('_')[1])))
         for job_task_id in task_node_table_keys:
@@ -73,10 +74,11 @@ class SparkDriver:
            return the last rdd that action should be applied"""
         debug_print("[SparkDriver] Assigning Task {0}...".format(task.task_id), self._master.debug)
 
-        worker_info = self._master.get_available_worker()
+        worker_info = None
         while worker_info is None:
-            gevent.sleep(0.5)
             worker_info = self._master.get_available_worker()
+            gevent.sleep(0.5)
+
         #Update future tasks that may use this task as resource
         # for t in self.task_list.keys():
         #     if isinstance(t.input_source, list):
@@ -95,7 +97,7 @@ class SparkDriver:
         # else:
         #     self.task_node_table[worker_info["worker_id"]] = [task]
 
-        self._master.assign_task(worker_info['worker_id'], task, self.task_node_table)
+        ret=self._master.assign_task(worker_info['worker_id'], task, self.task_node_table)
         self.task_list[task] = "Assigned"
         debug_print("[SparkDriver] Assigning Task {0}... Finished".format(task.task_id), self._master.debug)
         debug_print("[SparkDriver] Task {0}.input_resource {1}".format(task.task_id, task.input_source), self._master.debug)
