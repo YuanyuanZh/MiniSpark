@@ -64,6 +64,7 @@ class Master():
         # return self.worker_id
 
     def get_available_worker(self):
+
         for worker_id, worker in self.worker_list.items():
             if worker['num_slots'] > 0:
                 return worker
