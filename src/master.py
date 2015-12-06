@@ -155,7 +155,7 @@ class Master():
                  'event_object': event_object
                  }
 
-        self.event_queue.put_nowait(event)
+        self.event_queue.put(event)
 
     def process_worker_down(self, worker_id):
         if self.worker_list.has_key(worker_id) :
