@@ -44,7 +44,10 @@ class SparkDriver:
         #print "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{0}".format(tasks[0].task_id)
         for task in tasks:
             #gevent.spawn(self.assign_task, task)
-            self.assign_task(task)
+            ret = self.assign_task(task)
+            while ret is not 0:
+                gevent.sleep(0.5)
+                ret = self.assign_task(task)
 
         # self.result_ready.wait()
         # return self.action(args)
@@ -62,7 +65,10 @@ class SparkDriver:
                 if task_i.task_id == task_id:
                     task = task_i
                     break
-            self.assign_task(task)
+            ret=self.assign_task(task)
+            while ret is not 0:
+                gevent.sleep(0.5)
+                ret=self.assign_task(task)
 
         for worker in self._master.worker_list:
             self._master.update_task_node_table(worker.worker_id, self.task_node_table)
@@ -98,9 +104,11 @@ class SparkDriver:
         #     self.task_node_table[worker_info["worker_id"]] = [task]
 
         ret=self._master.assign_task(worker_info['worker_id'], task, self.task_node_table)
-        self.task_list[task] = "Assigned"
+        if ret==0:
+            self.task_list[task] = "Assigned"
         debug_print("[SparkDriver] Assigning Task {0}... Finished".format(task.task_id), self._master.debug)
         debug_print("[SparkDriver] Task {0}.input_resource {1}".format(task.task_id, task.input_source), self._master.debug)
+        return ret
 
     def init_tasks(self, lineage):
         """
@@ -219,5 +227,28 @@ class SparkDriver:
         self._master.return_client(self.job_id, count_result)
 
 
+class StreamingDriver(SparkDriver):
+    def __init__(self, job_id):
+        self.actions = {"reduce": self.do_reduce,
+                        "collect": self.do_collect,
+                        "count": self.do_count
+                        }
+        # task_list: {task: status}
+        self.job_id=job_id
+        self.task_list = {}
+        self.args=None
+        # task_node_table: {worker_id: [tasks]}
+        self.task_node_table = {}
+        self.func = None
+        self.action = None
+        self.result = []
+        self.isFinished=False
+        self.interval=20
+
+    def do_drive(self, last_rdd, action_name, *args):
+        self.action=self.actions[action_name]
+        lineage=last_rdd.get_lineage()
+        while True:
+            pass
 
 

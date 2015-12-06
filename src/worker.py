@@ -56,7 +56,7 @@ class Worker():
         if partition_id not in self.streaming_data[job_id].keys():
             self.streaming_data[job_id][partition_id] = []
         self.streaming_data[job_id][partition_id].append(value)
-        self.streaming_data = {}
+        #self.streaming_data = {}
 
     def startRPCServer(self):
         master = zerorpc.Server(self)
