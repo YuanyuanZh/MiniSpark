@@ -52,12 +52,18 @@ class Master():
     def get_worker_list(self):
         return self.worker_list
 
-    def assign_task(self, task, worker_id):
+    def update_task_node_table(self, worker_id, task_node_table):
+        worker_address = self.worker_list[worker_id]['address']
+        client = get_client(worker_address)
+        ret = execute_command(client, client.update_task_node_table, task_node_table)
+        return ret
+
+    def assign_task(self, worker_id, task, task_node_table):
         task_str = pickle_object(task)
         worker_address = self.worker_list[worker_id]['address']
         debug_print("[Master] Sending Task {0} to Worker {1}, address {2}".format(task.task_id, worker_id, worker_address), self.debug)
         client = get_client(worker_address)
-        ret = execute_command(client, client.start_task, task_str)
+        ret = execute_command(client, client.start_task, task_str, task_node_table)
         debug_print("[Master] Sent Task {0} to Worker {1} with return val {2}".format(task.task_id, worker_id, ret), self.debug)
 
         if ret == 0:
