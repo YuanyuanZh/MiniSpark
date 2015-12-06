@@ -46,17 +46,14 @@ class Worker():
         :param value: spark streaming message
                spark streaming message is "job_id,partition_id,value"
         """
-        value_array = value.split(",")
-        job_id = value_array[0]
-        partition_id = value_array[1]
-        value = value_array[2]
+        job_id, partition_id, value = value.split(",")
 
         if job_id not in self.streaming_data.keys():
             self.streaming_data[job_id] = {}
         if partition_id not in self.streaming_data[job_id].keys():
             self.streaming_data[job_id][partition_id] = []
         self.streaming_data[job_id][partition_id].append(value)
-        self.streaming_data = {}
+        #self.streaming_data = {}
 
     def startRPCServer(self):
         master = zerorpc.Server(self)
