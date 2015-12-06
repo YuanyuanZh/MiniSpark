@@ -46,6 +46,29 @@ class RDD(object):
             return hash_partitioner.partition()
         return data
 
+    def shuffle(self, input_source):
+        results = []
+        #debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
+        for source in input_source:
+            debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, source))
+            if not isinstance(source, list):
+                source=[source]
+            for p in source:
+                result=None
+                #TODO Here May Return None
+                while result is None:
+                    task_node_table=p["task_node_table"]
+                    worker_address= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["address"]
+                    client = get_client(worker_address)
+                    debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
+                    result=execute_command(client, client.get_rdd_result,
+                                          p['job_id'],
+                                          p['task_id'],
+                                          p['partition_id'])
+                debug_print("[Shuffle] {0} get a result={1} from {2}, at Part {3}".format(self.id, result,  p['task_id'],p['partition_id']))
+                results += result
+        return results
+
 class InputRDD(RDD):
     pass
 
@@ -88,28 +111,28 @@ class MultiParentNarrowRDD(NarrowRDD):
     def __init__(self):
         pass
 
-    def shuffle(self, input_source):
-        results = []
-        #debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
-        for partitions in input_source:
-            debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, partitions))
-            if not isinstance(partitions, list):
-                partitions=[partitions]
-            for p in partitions:
-                result=None
-                #TODO Here May Return None
-                while result is None:
-                    task_node_table=input_source["task_node_table"]
-                    worker_id= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["worker_id"]
-                    client = get_client(worker_id)
-                    debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
-                    result=execute_command(client, client.get_rdd_result,
-                                          p['job_id'],
-                                          p['task_id'],
-                                          p['partition_id'])
-                debug_print("[Shuffle] {0} get a result={1} from {2}, at Part {3}".format(self.id, result,  p['task_id'],p['partition_id']))
-                results += result
-        return results
+    # def shuffle(self, input_source):
+    #     results = []
+    #     #debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
+    #     for partitions in input_source:
+    #         debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, partitions))
+    #         if not isinstance(partitions, list):
+    #             partitions=[partitions]
+    #         for p in partitions:
+    #             result=None
+    #             #TODO Here May Return None
+    #             while result is None:
+    #                 task_node_table=p["task_node_table"]
+    #                 worker_id= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["address"]
+    #                 client = get_client(worker_id)
+    #                 debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
+    #                 result=execute_command(client, client.get_rdd_result,
+    #                                       p['job_id'],
+    #                                       p['task_id'],
+    #                                       p['partition_id'])
+    #             debug_print("[Shuffle] {0} get a result={1} from {2}, at Part {3}".format(self.id, result,  p['task_id'],p['partition_id']))
+    #             results += result
+    #     return results
 
 
 class WideRDD(RDD):
@@ -326,18 +349,28 @@ class Join(MultiParentNarrowRDD):
     def get(self, input_source):
         debug_print("[Join-RDD] {0} has Parnets {1}".format(self.id, map(lambda x: x.id, self.parent)))
         if not self.data:
+            result={}
+            self.data=[]
             elements = self.shuffle(input_source)
-            element1 = elements[0]
-            element2 = elements[1]
             # element1 = self.parent[0].get([input_source])
             # element2 = self.parent[1].get([input_source])
-            if element1 == None or element2 == None:
-                return None
-            else:
-                rst = []
-                for i in range(len(element1)):
-                    rst.append((element1[i][0], (element1[i][1], element2[i][1])))
-                self.data = rst
+            for elem in elements:
+                key=elem[0]
+                value=elem[1]
+                if result.has_key(key):
+                    result[key].append(value)
+                else:
+                    result[key]=[value]
+            for k in result.keys():
+                self.data.append((k, result[k]))
+            # if element1 == None or element2 == None:
+            #     return None
+            # else:
+            #     print "####################{0}".format(elements)
+            #     rst = []
+            #     for i in range(len(element1)):
+            #         rst.append((element1[i][0], (element1[i][1], element2[i][1])))
+            #     self.data = rst
         self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         debug_print("[Join-RDD] id: {0} self.input_source={1} self.data={2}".format(self.id, input_source, self.data))
         return self.data
