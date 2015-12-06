@@ -23,9 +23,11 @@ class Worker():
             self.worker_address = worker_address
             self.is_remote = True
         self.all_task_list = {}
-        self.TaskQueue = Queue()
+        self.task_queue = Queue()
         self.debug = debug
         self.streaming_data = {}
+        self.event_queue = Queue()
+        self.task_node_table = None
 
     def getMyAddress(self):
         try:
@@ -120,20 +122,44 @@ class Worker():
             else:
                 gevent.sleep(2)
 
-    def start_task(self, serialized_task):
-        task=unpickle_object(serialized_task)
+    def start_task(self, serialized_task, task_node_table):
+        task = unpickle_object(serialized_task)
         debug_print("[Worker] Received Task {0}".format(task.task_id), self.debug)
-        self.TaskQueue.put(task)
+        # event = {
+        #     'type' : 'Update',
+        #     'data' : task_node_table
+        # }
+        self.event_queue.put(task_node_table)
+        self.task_queue.put(task)
         return 0
 
-    def TaskManager(self):
+    def task_manager(self):
         while True:
-            while not self.TaskQueue.empty():
-                task = self.TaskQueue.get()
+            while not self.task_queue.empty():
+                task = self.task_queue.get()
                 print "Create thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
                 thread = gevent.spawn(self.runPartition, task)
                 debug_print("Task created: Key: {0} at {1}".format(
                     task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
+            gevent.sleep(0)
+
+    def update_task_node_table(self, task_node_table):
+        try:
+            self.event_queue.put(task_node_table)
+        except:
+            return 1
+        return 0
+
+    def event_handler(self):
+        while True:
+            while not self.event_queue.empty():
+                task_node_table = self.event_queue.get()
+                #update task_node_table
+                if self.task_node_table is None :
+                    self.task_node_table = task_node_table
+                else :
+                    for job_task_id, worker_info in  task_node_table :
+                        self.task_node_table[job_task_id] = worker_info
             gevent.sleep(0)
 
     def heartbeat(self):
@@ -166,7 +192,7 @@ class Worker():
         self.register()
         # self.startRPCServer()
         thread1 = gevent.spawn(self.heartbeat)
-        thread2 = gevent.spawn(self.TaskManager)
+        thread2 = gevent.spawn(self.task_manager)
         thread3 = gevent.spawn(self.startRPCServer)
         # self.startRPCServer()
         gevent.joinall([thread1, thread3, thread2])
