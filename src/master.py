@@ -33,6 +33,7 @@ class Master():
         self.worker_event_list = {}
         self.streaming_data = {}
 
+
     def registerWorker(self, worker_address):
         self.worker_id += 1
         worker_id = self.worker_id
@@ -270,7 +271,9 @@ class Master():
 
     def run_loop_job(self, job_id, driver):
         while True:
-            gevent.spawn(self.job_list[job_id].run, driver)
+            debug_print_by_name('wentao', 'start_once')
+            driver.set_partition()
+            #gevent.spawn(self.job_list[job_id].run, driver)
             gevent.sleep(self.job_list[job_id].interval)
 
 
@@ -281,11 +284,10 @@ class Master():
         self.job_list[job_id] = unpickle_object(job)
         if isinstance(self.job_list[job_id], StreamingClient):
             driver = StreamingDriver(job_id)
-            gevent.spawn(self.job_list[job_id].run, driver)
+            gevent.spawn(self.run_loop_job, job_id, driver)
         else:
             driver = SparkDriver(job_id)
-            gevent.spawn(self.run_loop_job, job_id, driver)
-
+            gevent.spawn(self.job_list[job_id].run, driver)
         self.driver_list[job_id] = (driver, client_address)
         self.job_id += 1
         # except Exception as e:
@@ -293,7 +295,7 @@ class Master():
         # self.job_id, client_address, sys.exc_info(), time.asctime(time.localtime(time.time()))), self.debug)
         # sys.exc_traceback
         # return -1
-        return self.job_id
+        return job_id
 
     def return_client(self, job_id, result):
         if self.driver_list.has_key(job_id):
@@ -303,18 +305,10 @@ class Master():
                 job_id, client_address, time.asctime(time.localtime(time.time()))), self.debug)
             execute_command(client, client.recieve_msg, 'Finish job with result: {0}'.format(result))
 
-    def send_partition(self, streaming_data):
-        job_id, worker_id, partition_id = streaming_data.split(',')
-        if job_id not in self.streaming_data:
-            self.streaming_data[job_id] = {}
-        if worker_id not in self.streaming_data:
-            self.streaming_data[job_id][worker_id] = []
-        if partition_id not in self.streaming_data[worker_id]:
-            self.streaming_data[job_id][worker_id].append(partition_id)
-
-        print(self.streaming_data)
-            # def produce_new_driver(self, job_id):
-            #     return SparkDriver()
+    def ship_streaming_meta_data(self, job_id, streaming_metadata_table):
+        for worker_id, worker in self.worker_list.items():
+            client = get_client(worker['address'])
+            client.get_partition_infor(streaming_metadata_table, job_id, self.worker_list)
 
 
 if __name__ == '__main__':

@@ -26,8 +26,10 @@ class Worker():
         self.task_queue = Queue()
         self.debug = debug
         self.streaming_data = {}
+        self.streaming_meta_data = {}
         self.event_queue = Queue()
         self.task_node_table = {}
+        self.worker_list = None
 
     def getMyAddress(self):
         try:
@@ -39,20 +41,60 @@ class Worker():
         except socket.error:
             return "127.0.0.1"
 
-    def get_streaming_message(self, value):
+    def get_partition_infor(self, partition_infor, job_id, worker_list):
+        debug_print_by_name('wentao', str(partition_infor))
+        debug_print_by_name('wentao', str(worker_list))
+        self.streaming_meta_data = partition_infor
+        self.worker_list = worker_list
+        self.streaming_data[job_id] = {}
+        for partition in partition_infor[self.id]:
+            self.streaming_data[job_id][partition] = []
+        debug_print_by_name('wentao', str(self.streaming_data))
+
+    def find_worker_in_metadata(self, partition_id, metadata):
+        worker = []
+        debug_print_by_name('wentao', str(metadata))
+        for worker_id, partition_list in metadata.items():
+            if partition_id in partition_list and worker_id != self.id:
+                worker.append(worker_id)
+        return worker
+
+    def replicate(self, job_id, partition, value):
+        if job_id in self.streaming_data.keys():
+            self.streaming_data[job_id][partition].append(value)
+            print self.streaming_data
+
+
+
+    def get_streaming_message(self, message):
         """
         Function to get and store streaming message.
 
         :param value: spark streaming message
-               spark streaming message is "job_id,partition_id,value"
+               spark streaming message is "job_id,value"
         """
-        job_id, partition_id, value = value.split(",")
-
-        if job_id not in self.streaming_data.keys():
-            self.streaming_data[job_id] = {}
-        if partition_id not in self.streaming_data[job_id].keys():
-            self.streaming_data[job_id][partition_id] = []
-        self.streaming_data[job_id][partition_id].append(value)
+        job_id, value = message.split(",")
+        job_id = int(job_id)
+        print message
+        try:
+            if job_id in self.streaming_data.keys():
+                p_id = None
+                length = 9999999
+                partitions = self.streaming_data[job_id]
+                for partition_id, data in partitions.items():
+                    if len(data) < length:
+                        length = len(data)
+                        p_id = partition_id
+                partitions[p_id].append(value)
+                #todo replica
+                worker_list = self.find_worker_in_metadata(p_id, self.streaming_meta_data)
+                debug_print_by_name('wentao', str(worker_list))
+                for worker_id in worker_list:
+                    client = get_client(self.worker_list[worker_id]['address'], 1)
+                    execute_command(client, client.replicate, job_id, p_id, value)
+                print self.streaming_data
+        except Exception:
+            pass
         #self.streaming_data = {}
 
     def startRPCServer(self):
