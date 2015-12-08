@@ -29,6 +29,7 @@ class Master():
         self.worker_event_list = {}
         self.streaming_data = {}
 
+
     def registerWorker(self, worker_address):
         """
         Receive register  worker request. Add event to event queue.
@@ -339,7 +340,9 @@ class Master():
 
     def run_loop_job(self, job_id, driver):
         while True:
-            gevent.spawn(self.job_list[job_id].run, driver)
+            debug_print_by_name('wentao', 'start_once')
+            driver.set_partition()
+            #gevent.spawn(self.job_list[job_id].run, driver)
             gevent.sleep(self.job_list[job_id].interval)
 
 
@@ -354,14 +357,13 @@ class Master():
         self.job_list[job_id] = unpickle_object(job)
         if isinstance(self.job_list[job_id], StreamingClient):
             driver = StreamingDriver(job_id)
-            gevent.spawn(self.job_list[job_id].run, driver)
+            gevent.spawn(self.run_loop_job, job_id, driver)
         else:
             driver = SparkDriver(job_id)
-            gevent.spawn(self.run_loop_job, job_id, driver)
-
+            gevent.spawn(self.job_list[job_id].run, driver)
         self.driver_list[job_id] = (driver, client_address)
         self.job_id += 1
-        return self.job_id
+        return job_id
 
     def return_client(self, job_id, result):
         """
@@ -387,6 +389,11 @@ class Master():
             self.streaming_data[job_id][worker_id].append(partition_id)
 
         print(self.streaming_data)
+
+    def ship_streaming_meta_data(self, job_id, streaming_metadata_table):
+        for worker_id, worker in self.worker_list.items():
+            client = get_client(worker['address'])
+            client.get_partition_infor(streaming_metadata_table, job_id, self.worker_list)
 
 if __name__ == '__main__':
     status = Worker_Status.UP
