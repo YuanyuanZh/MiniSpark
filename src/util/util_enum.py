@@ -28,6 +28,7 @@ class Status(Enum):
     PROCESSING = 3
     FINISH = 4
     FINISH_REPORTED = 5
+    FAIL = 6
 
 class Event(Enum):
     REGISTER = 1

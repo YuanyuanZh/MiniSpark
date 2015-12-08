@@ -1,8 +1,9 @@
 import gevent
 import zerorpc
 from src.rdd.rdd import WideRDD, TextFile, GroupByKey, Map, Join, \
-    MultiParentNarrowRDD, InputRDD
+    MultiParentNarrowRDD, InputRDD, NarrowRDD, Streaming
 from src.task import Task
+import time
 from src.util.util_debug import *
 
 
@@ -119,7 +120,7 @@ class SparkDriver:
         :param lineage: The lineage of RDDs
         """
         debug_print("[SparkDriver] Init Tasks", self._master.debug)
-        tasks = {}
+        self.task_list = {}
         cur_stage_id = 0
         prev = lineage[0][0]
         stage_start = lineage[0][0]
@@ -152,6 +153,8 @@ class SparkDriver:
         tasks = {}
         graph_table = last_rdd.partitions()
         for cur_par_id in range(0, len(graph_table)):
+            new_task_id = self.generate_task_id(cur_stage_id, cur_par_id)
+
             if isinstance(start_rdd, InputRDD):
                 # TextFile data source
                 input_source = [{'job_id': self.job_id, "partition_id": cur_par_id}]
@@ -184,15 +187,26 @@ class SparkDriver:
                                         debug_print(
                                             "[SparkDriver]Find Shuffle Parent Task {0} For Task{1} ".format(
                                                 task.task_id,
-                                                "{0}_{1}".format(cur_stage_id,
-                                                                 cur_par_id)))
+                                                new_task_id
+                                            )
+                                        )
                                         elem_dict['task_id'] = task.task_id
                                 input_source.append(elem_dict)
 
-            tasks.update({Task(last_rdd, input_source,
-                               "{0}_{1}".format(cur_stage_id, cur_par_id),
-                               self.job_id): 'New'})
+            tasks.update({Task(last_rdd, input_source, new_task_id, self.job_id): 'New'})
         return tasks
+
+    def generate_task_id(self, cur_stage_id, cur_par_id):
+        return "{0}_{1}".format(cur_stage_id, cur_par_id)
+
+    def print_task_list(self, task_list):
+        for task, status in task_list.items():
+            strs = ""
+            strs += '{0} : {1}'.format(
+                str(task),
+                status
+            )
+            debug_print_by_name('wentao', strs)
 
     def finish_task(self, task_id):
         if not self.isFinished:
@@ -205,10 +219,14 @@ class SparkDriver:
                         "[SparkDriver] Task {0} for Job {1} Finished".format(
                             task_id, self.job_id))
                     break
+            self.print_task_list(self.task_list)
+            if task not in self.last_tasks.keys():
+                return
             for task in self.last_tasks.keys():
                 if self.task_list[task] is not 'Finished':
                     return
-            self.isFinished = True
+            if not isinstance(self, StreamingDriver):
+                self.isFinished = True
             debug_print("[SparkDriver] Job {0} Finished".format(self.job_id),
                         self._master.debug)
             # collect_process = gevent.spawn(self.get_all_results)
@@ -219,6 +237,7 @@ class SparkDriver:
             # self._master.clean_job(self.job_id)
 
     def get_all_results(self):
+        self.result = []
         debug_print("[SparkDriver] Collecting Results From Nodes",
                     self._master.debug)
 
@@ -258,7 +277,7 @@ class SparkDriver:
 
 
 class StreamingDriver(SparkDriver):
-    def __init__(self, job_id):
+    def __init__(self, job_id, interval):
         self.actions = {"reduce": self.do_reduce,
                         "collect": self.do_collect,
                         "count": self.do_count
@@ -273,7 +292,7 @@ class StreamingDriver(SparkDriver):
         self.action = None
         self.result = []
         self.isFinished = False
-        self.interval = 20
+        self.interval = interval
         # partition_info {worker_id :[partitions]}
         self.partition_infor = {}
 
@@ -296,31 +315,49 @@ class StreamingDriver(SparkDriver):
             second_index = increase_number(index, worker_number)
             self.partition_infor[worker_id] = [index, second_index]
 
-        # Choose a Leader
-        for worker in self.partition_infor.keys():
-            self.partition_leader[self.partition_infor[worker][0]]=worker
+
+
+            #self.partition_leader[self.partition_infor[worker][0]]=worker
 
         debug_print_by_name('wentao', str(self.partition_infor))
         self._master.ship_streaming_meta_data(self.job_id, self.partition_infor)
+
+    def choose_leader(self):
+        for worker_id in self.partition_infor.keys():
+            for partition_id in self.partition_infor[worker_id]:
+                if partition_id not in self.partition_leader.keys():
+                    self.partition_leader[partition_id] = worker_id
+
+    def check_if_streaming(self, task):
+        rdd_iter = task.last_rdd
+        while True:
+            if not isinstance(rdd_iter, NarrowRDD):
+                return isinstance(rdd_iter, Streaming)
+            rdd_iter = rdd_iter.parent
 
 
 
     def assign_task(self, task):
         """Assign the stages list to Master Node,
            return the last rdd that action should be applied"""
+                # Choose a Leader
         debug_print("[StreamingDriver] Assigning Task {0}...".format(task.task_id),
                     self._master.debug)
 
         print "!!!!!!{0}, {1}".format(self.partition_infor, self.partition_leader)
-        partition_id=int(task.task_id.split("_")[1])
-        if partition_id in self.partition_leader.keys():
+        worker_id = -1
+        if self.check_if_streaming(task):
+            partition_id = int(task.task_id.split("_")[1])
             worker_id = self.partition_leader[partition_id]
-            worker_info=self._master.worker_list[worker_id]
-        else:
-            worker_info = self._master.get_available_worker()
-            while worker_info is None:
-                gevent.sleep(0.5)
-                worker_info = self._master.get_available_worker()
+            task.input_source[0]['interval'] = self.interval
+        # if partition_id in self.partition_leader.keys():
+        #     worker_id = self.partition_leader[partition_id]
+            # worker_info=self._master.worker_list[worker_id]
+        # else:
+        worker_info = self._master.get_available_worker(worker_id)
+        while worker_info is None:
+            gevent.sleep(0.5)
+            worker_info = self._master.get_available_worker(worker_id)
 
         unique_task_id = '{job_id}_{task_id}'.format(job_id=self.job_id,
                                                      task_id=task.task_id)
@@ -364,3 +401,28 @@ class StreamingDriver(SparkDriver):
                     break
 
         gevent.spawn(self.assign_task_list, task_list)
+
+    def do_drive(self, last_rdd, action_name, *args):
+        self.choose_leader()
+        self.action = self.actions[action_name]
+        lineage = last_rdd.get_lineage()
+        debug_print("[SparkDriver]*****************", self._master.debug)
+        debug_print("[SparkDriver]*** Partition Form:", self._master.debug)
+        for rdd in lineage:
+            debug_print("[SparkDriver]***{0}    {1}".format(rdd[1], rdd[
+                0].partitions()), self._master.debug)
+        debug_print("[SparkDriver]*****************", self._master.debug)
+        self.args = args
+        # generate graph-table and stages
+        # partition_graph = self.gen_graph_table(last_rdd)
+        self.init_tasks(lineage)
+        # Do some fuction to generate the rdd that apply the operation and the result
+        tasks = self.task_list.keys()
+        tasks.sort(lambda x, y: cmp(int(x.task_id.split("_")[0]),
+                                    int(y.task_id.split("_")[0])))
+        debug_print_by_name('kaijie', str(tasks))
+        # print "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX{0}".format(tasks[0].task_id)
+        gevent.spawn(self.assign_task_list, tasks)
+
+    def generate_task_id(self, cur_stage_id, cur_par_id):
+        return "{0}_{1}_{2}".format(cur_stage_id, cur_par_id, time.time())

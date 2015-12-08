@@ -1,6 +1,6 @@
 import gevent
 from src.rdd import partition
-from src.util.util_debug import debug_print
+from src.util.util_debug import debug_print, debug_print_by_name
 from src.util.util_zerorpc import get_client, execute_command
 
 
@@ -62,7 +62,7 @@ class RDD(object):
                     task_node_table=p["task_node_table"]
                     worker_address= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["address"]
                     client = get_client(worker_address)
-                    debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
+                    #debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
                     result=execute_command(client, client.get_rdd_result,
                                           p['job_id'],
                                           p['task_id'],
@@ -111,10 +111,13 @@ class Streaming(InputRDD):
         self.num_rst_partitions = None
 
     def get(self, input_source):
-        job_id = input_source['job_id']
-        partition_id = input_source['partition_id']
+ #       job_id = input_source[0]['job_id']
+  #      partition_id = input_source[0]['partition_id']
+
+        debug_print_by_name('kaijie', str(input_source[0]['streaming_data']))
+        streaming_data = input_source[0]['streaming_data']
         #self.data= input_source['streaming_data'][job_id][partition_id]
-        data = self.partition_intermediate_rst(input_source['streaming_data'][job_id][partition_id], self.num_rst_partitions)
+        data = self.partition_intermediate_rst(streaming_data, self.num_rst_partitions)
         return data
 
 
@@ -285,7 +288,8 @@ class Map(NarrowRDD):
                 element_new = []
             for e in element:
                 element_new.append(self.func(e))
-                self.data = element_new
+            self.data = element_new
+        debug_print_by_name('wentao', str(self.data))
         self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
 
