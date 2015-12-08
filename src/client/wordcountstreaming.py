@@ -1,5 +1,7 @@
+import random
 import gevent
-from src.client.basicclient import BasicClient, MASTER_ADDRESS
+from src.client.basicclient import StreamingClient
+
 from src.rdd import rdd
 import sys
 import re
@@ -17,57 +19,77 @@ def increase_number(value, mod):
     return (value + 1) % mod
 
 
-def send_word(worker_list, job_id):
-    worker_count = len(worker_list)
-    partition_count = 20
+
+def send_data(client_address, data):
+    client_s = get_client(client_address, 1)
+    execute_command(client_s, client_s.get_streaming_message, data)
+
+
+def get_worker_data(job_id, value):
+    format_string = '{job_id},{value}'
+    return format_string.format(job_id=job_id, value=value)
+
+
+#def get_master_data(job_id, worker_id, partition_id):
+#    format_string = '{job_id},{worker_id},{partition_id}'
+#    return format_string.format(job_id=job_id, worker_id=worker_id,
+#                                partition_id=partition_id)
+
+
+def send_word(job_id, master_addr):
 
     while True:
-        worker_iterator = 0
-        for partition_iterator in (0, partition_count):
-            value = random.randint(0,10)
-            client1 = get_client(worker_list[worker_iterator]['address'])
-            execute_command(client1, client1.get_streaming_message, '{job_id},{partition_id},{value}'.format(
-                job_id=job_id,
-                partition_id=partition_iterator,
-                value=value
-            ))
+        master = get_client(master_addr)
+        worker_list = execute_command(master, master.get_worker_list)
+        debug_print_by_name('wentao', str(worker_list))
 
-            worker_iterator = increase_number(worker_iterator, worker_count)
-            client2 = get_client(worker_list[worker_iterator]['address'])
-            execute_command(client2, client2.get_streaming_message, '{job_id},{partition_id},{value}'.format(
-                job_id=job_id,
-                partition_id=partition_iterator,
-                value=value
-            ))
-        gevent.sleep(0.5)
+        for worker_id, worker in worker_list.items():
+            debug_print_by_name('wentao', str(worker))
+            value = random.randint(1, 10)
+            worker_data = get_worker_data(job_id, value)
+            send_data(worker['address'], worker_data)
+#            master_data = get_master_data(job_id, worker_iterator, partition_iterator)
+#            send_data(master_addr, master_data)
+#            worker_iterator = increase_number(worker_iterator, worker_count)
+
+        gevent.sleep(2)
 
 
-class WordCountClientStreaming(BasicClient):
-    def __init__(self):
-        super(WordCountClientStreaming, self).__init__()
-        self.interval = 20
+class StreamingWordCountClient(StreamingClient):
+    def __init__(self, filename, interval):
+        self.filename = filename
+        self.interval = interval
 
-    def run(self):
-        data = rdd.Streaming()
-        f = rdd.FlatMap(data, lambda x: parse_lines(x))
+    def run(self, driver):
+        RDD._config = {'num_partition_RBK': 2,
+                       'num_partition_GBK': 2,
+                       'split_size': 128,
+                       "driver_addr": ""}
+        RDD._streaming = 20
+        lines = rdd.Streaming(driver.num_partition)
+        f = rdd.FlatMap(lines, lambda x: parse_lines(x))
         m = rdd.Map(f, lambda x: (x, 1))
         counts = rdd.ReduceByKey(m, lambda a, b: a + b)
-        counts.collect()
+        counts.collect(driver)
 
 
 if __name__ == '__main__':
-    RDD._config = {'num_partition_RBK': 2,
-                   'num_partition_GBK': 2,
-                   'split_size': 128,
-                   "driver_addr": ""}
-    word_count_client = WordCountClientStreaming()
-    client = get_client(MASTER_ADDRESS)
-    job_id = execute_command(client, client.get_job, pickle_object(word_count_client), sys.argv[2])
 
-    client = get_client(MASTER_ADDRESS)
-    worker_list = execute_command(client, client.get_worker_list)
+    name, master_address, self_address, interval = sys.argv
+    # word count streaming client
+    word_count_client = StreamingWordCountClient(master_address, int(interval))
+    obj = pickle_object(word_count_client)
 
-    gevent.spawn(send_word, worker_list, job_id)
+    # assign job
+    client = get_client(master_address)
+    job_id = execute_command(client, client.get_job, obj, self_address)
+    debug_print_by_name('wentao', str(job_id))
 
-    word_count_client.run()
-    word_count_client.start_server("0.0.0.0")
+    # send data
+    send_data_thread = gevent.spawn(send_word, job_id, master_address)
+    print "[Client]Job Submited...."
+    client_thread = gevent.spawn(word_count_client.start_server, self_address)
+    gevent.joinall([send_data_thread, client_thread])
+
+    # word_count_client.start_server(self_address)
+

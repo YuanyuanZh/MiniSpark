@@ -1,0 +1,60 @@
+Job scheduler started at Sun Nov 29 22:06:56 2015
+Heartbeat started at Sun Nov 29 22:06:56 2015
+Job tracker started at Sun Nov 29 22:06:56 2015
+RPC server started at Sun Nov 29 22:06:56 2015
+Worker0 127.0.0.1:2001 registered at Sun Nov 29 22:07:04 2015
+Worker1 127.0.0.1:2003 registered at Sun Nov 29 22:07:08 2015
+Worker2 127.0.0.1:2003 registered at Sun Nov 29 22:07:12 2015
+Initialize Job: job_id: 0 at Sun Nov 29 22:07:08 2015
+Assign mapper task 0 on worker 0 at Sun Nov 29 22:07:08 2015
+Assign reducer task 0 on worker 0 at Sun Nov 29 22:07:08 2015
+Mapper 0 finished. Worker_id: 0 127.0.0.1:2001, at Sun Nov 29 22:07:10 2015
+Assign reducer task 1 on worker 0 at Sun Nov 29 22:07:14 2015
+Reducer 0 finished. worker_id: 0 127.0.0.1:2001, at Sun Nov 29 22:07:14 2015
+Assign reducer task 2 on worker 0 at Sun Nov 29 22:07:16 2015
+Reducer 1 finished. worker_id: 0 127.0.0.1:2001, at Sun Nov 29 22:07:16 2015
+Assign reducer task 3 on worker 0 at Sun Nov 29 22:07:18 2015
+Reducer 2 finished. worker_id: 0 127.0.0.1:2001, at Sun Nov 29 22:07:18 2015
+Assign reducer task 4 on worker 0 at Sun Nov 29 22:07:20 2015
+Reducer 3 finished. worker_id: 0 127.0.0.1:2001, at Sun Nov 29 22:07:20 2015
+Assign reducer task 5 on worker 0 at Sun Nov 29 22:07:22 2015
+Reducer 4 finished. worker_id: 0 127.0.0.1:2001, at Sun Nov 29 22:07:22 2015
+Assign reducer task 6 on worker 0 at Sun Nov 29 22:07:24 2015
+Reducer 5 finished. worker_id: 0 127.0.0.1:2001, at Sun Nov 29 22:07:24 2015
+Assign reducer task 7 on worker 0 at Sun Nov 29 22:07:26 2015
+Reducer 6 finished. worker_id: 0 127.0.0.1:2001, at Sun Nov 29 22:07:26 2015
+Warning: worker0 127.0.0.1:2001 down at Sun Nov29-22:07:32-2015
+Worker 1 127.0.0.1:2001 registered at Sun Nov 29 22:07:40 2015
+Assign mapper task 0 on worker 1 at Sun Nov 29 22:07:40 2015
+Assign reducer task 0 on worker 1 at Sun Nov 29 22:07:41 2015
+Mapper 0 finished. Worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:42 2015
+Assign reducer task 1 on worker 1 at Sun Nov 29 22:07:46 2015
+Reducer 0 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:46 2015
+Assign reducer task 2 on worker 1 at Sun Nov 29 22:07:48 2015
+Reducer 1 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:48 2015
+Assign reducer task 3 on worker 1 at Sun Nov 29 22:07:50 2015
+Reducer 2 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:50 2015
+Assign reducer task 4 on worker 1 at Sun Nov 29 22:07:52 2015
+Reducer 3 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:52 2015
+Assign reducer task 5 on worker 1 at Sun Nov 29 22:07:54 2015
+Reducer 4 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:54 2015
+Warning: worker0 127.0.0.1:2003 down at Sun Nov29-22:07:32-2015
+Mapper 0 finished. Worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:42 2015
+Assign reducer task 1 on worker 1 at Sun Nov 29 22:07:46 2015
+Reducer 0 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:46 2015
+Assign reducer task 2 on worker 1 at Sun Nov 29 22:07:48 2015
+Reducer 1 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:48 2015
+Assign reducer task 3 on worker 1 at Sun Nov 29 22:07:50 2015
+Reducer 2 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:50 2015
+Assign reducer task 6 on worker 1 at Sun Nov 29 22:07:56 2015
+Reducer 5 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:56 2015
+Assign reducer task 7 on worker 1 at Sun Nov 29 22:07:58 2015
+Reducer 6 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:07:58 2015
+Assign reducer task 8 on worker 1 at Sun Nov 29 22:08:00 2015
+Warning: worker2 127.0.0.1:2002 down at Sun Nov29-22:07:32-2015
+Reducer 7 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:08:00 2015
+Assign reducer task 9 on worker 1 at Sun Nov 29 22:08:03 2015
+Reducer 8 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:08:03 2015
+Reducer 9 finished. worker_id: 1 127.0.0.1:2001, at Sun Nov 29 22:08:05 2015
+Result collect started at Sun Nov 29 22:08:05 2015
+Job 0 completed! at Sun Nov 29 22:08:05 2015

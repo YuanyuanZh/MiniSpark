@@ -25,30 +25,36 @@ def parseNeighbors(urls):
 
 class PageRankClient(BasicClient):
     def __init__(self, filename):
-        super(PageRankClient, self).__init__()
         self.filename = filename
 
-    def run(self):
+    def run(self,driver):
+        RDD._config = {'num_partition_RBK': 2,
+                   'num_partition_GBK': 2,
+                   'split_size': 128,
+                   }
         t = rdd.TextFile(self.filename)
         m = rdd.Map(t, (lambda urls: parseNeighbors(urls)))
         links = rdd.GroupByKey(m)
         ranks = rdd.Map(links, lambda url_neighbors: (url_neighbors[0], 1.0))
-        for iteration in range(int(sys.argv[2])):
+        for iteration in range(2):
             joins = rdd.Join([links, ranks])
             contribs = rdd.FlatMap(joins,
                                    lambda url_urls_rank: computeContribs(url_urls_rank[1][0], url_urls_rank[1][1]))
             rbk = rdd.ReduceByKey(contribs, lambda a, b: a + b)
             ranks = rdd.MapValue(rbk, lambda rank: rank * 0.85 + 0.15)
-        ranks.collect()
+        ranks.collect(driver)
 
 
 if __name__ == '__main__':
-    RDD._config = {'num_partition_RBK': 2,
-                   'num_partition_GBK': 2,
-                   'split_size': 128,
-                   }
 
-    page_rank_client = PageRankClient(sys.argv[1])
-    client = get_client(MASTER_ADDRESS)
-    execute_command(client, client.get_job, pickle_object(page_rank_client), sys.argv[2])
-    page_rank_client.start_server("0.0.0.0")
+    master_address = sys.argv[1]
+    self_address = sys.argv[2]
+    filepath = sys.argv[3]
+
+    page_rank_client = PageRankClient(filepath)
+    # page_rank_client = PageRankClient(sys.argv[1])
+    client = get_client(master_address)
+    execute_command(client, client.get_job, pickle_object(page_rank_client), self_address)
+    print "[Client]Job Submited...."
+    page_rank_client.start_server(self_address)
+

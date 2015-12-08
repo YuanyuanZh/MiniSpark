@@ -7,7 +7,7 @@ class BasicClient(object):
     def __init__(self):
         pass
 
-    def run(self):
+    def run(self,driver):
         pass
 
     @staticmethod
@@ -16,3 +16,10 @@ class BasicClient(object):
 
     def start_server(self, address):
         start_server(address, self)
+
+    def recieve_msg(self, message):
+        BasicClient._print_message(message)
+
+
+class StreamingClient(BasicClient):
+    pass
