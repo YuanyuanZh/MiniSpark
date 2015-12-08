@@ -47,10 +47,10 @@ class Worker():
         self.worker_list = worker_list
         if job_id not in self.streaming_data.keys():
             self.streaming_data[job_id] = {}
-            for partition in partition_infor[self.id]:
-                if partition not in self.streaming_data[job_id].keys():
-                    self.streaming_data[job_id][partition] = []
-            debug_print_by_name('wentao', str(self.streaming_data))
+        for partition in partition_infor[self.id]:
+            if partition not in self.streaming_data[job_id].keys():
+                self.streaming_data[job_id][partition] = []
+        # debug_print_by_name('wentao', str(self.streaming_data))
 
     def find_worker_in_metadata(self, partition_id, metadata):
         worker = []
@@ -190,11 +190,17 @@ class Worker():
         for source in task.input_source:
             source['task_node_table'] = self.task_node_table
             if self.check_if_streaming(task):
-                source['streaming_data'] = self.streaming_data
-                debug_print_by_name('kaijie', str(self.streaming_data))
+                # source['streaming_data'] = self.streaming_data
+                # debug_print_by_name('wentao', str(self.streaming_data))
+                # debug_print_by_name('wentao', str(task.input_source[0]))
                 self.filter_data(task.input_source[0]['job_id'], task.input_source[0]['interval'])
                 s_data = []
-                for data in self.streaming_data[task.input_source[0]['job_id']][task.input_source[0]['partition_id']]:
+                job_id = task.input_source[0]['job_id']
+                parition_id = task.input_source[0]['partition_id']
+                debug_print_by_name('wentao', str(self.streaming_data))
+                debug_print_by_name('wentao', str(job_id))
+                debug_print_by_name('wentao', str(parition_id))
+                for data in self.streaming_data[job_id][parition_id]:
                     s_data.append(data['value'])
                 source['streaming_data'] = s_data
 
