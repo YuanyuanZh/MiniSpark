@@ -342,7 +342,7 @@ class Master():
         while True:
             debug_print_by_name('wentao', 'start_once')
             driver.set_partition()
-            #gevent.spawn(self.job_list[job_id].run, driver)
+            gevent.spawn(self.job_list[job_id].run, driver)
             gevent.sleep(self.job_list[job_id].interval)
 
 

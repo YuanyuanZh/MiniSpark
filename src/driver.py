@@ -65,7 +65,6 @@ class SparkDriver:
 
     def fault_handler(self, worker_id):
         debug_print("[Worker] Worker {0} is down!".format(worker_id))
-        print "XXXXXXXXXXXXXXXX{0}".format(self.task_node_table)
         task_node_table_keys = filter(
             lambda a: self.task_node_table[a]["worker_id"] == worker_id,
             self.task_node_table.keys())
@@ -155,7 +154,7 @@ class SparkDriver:
         for cur_par_id in range(0, len(graph_table)):
             if isinstance(start_rdd, InputRDD):
                 # TextFile data source
-                input_source = [{"partition_id": str(cur_par_id)}]
+                input_source = [{'job_id': self.job_id, "partition_id": cur_par_id}]
             elif isinstance(start_rdd, WideRDD) or isinstance(start_rdd,
                                                               MultiParentNarrowRDD):
                 # Shuffle data source\
@@ -275,7 +274,13 @@ class StreamingDriver(SparkDriver):
         self.result = []
         self.isFinished = False
         self.interval = 20
+        # partition_info {worker_id :[partitions]}
         self.partition_infor = {}
+
+        # partition_leader {partiton : worker_id}
+        self.partition_leader = {}
+
+        self.num_partition=len(self._master.worker_list.keys())
 
     def set_partition(self):
 
@@ -284,17 +289,78 @@ class StreamingDriver(SparkDriver):
 
         self.partition_infor = {}
         worker_number = len(self._master.worker_list)
+        self.num_partition=worker_number
         worker_id_keys = self._master.worker_list.keys()
         for index in xrange(0, worker_number):
             worker_id = worker_id_keys[index]
             second_index = increase_number(index, worker_number)
             self.partition_infor[worker_id] = [index, second_index]
 
+        # Choose a Leader
+        for worker in self.partition_infor.keys():
+            self.partition_leader[self.partition_infor[worker][0]]=worker
+
         debug_print_by_name('wentao', str(self.partition_infor))
         self._master.ship_streaming_meta_data(self.job_id, self.partition_infor)
 
-    def do_drive(self, last_rdd, action_name, *args):
-        self.action = self.actions[action_name]
-        lineage = last_rdd.get_lineage()
-        while True:
-            pass
+
+
+    def assign_task(self, task):
+        """Assign the stages list to Master Node,
+           return the last rdd that action should be applied"""
+        debug_print("[StreamingDriver] Assigning Task {0}...".format(task.task_id),
+                    self._master.debug)
+
+        print "!!!!!!{0}, {1}".format(self.partition_infor, self.partition_leader)
+        partition_id=int(task.task_id.split("_")[1])
+        if partition_id in self.partition_leader.keys():
+            worker_id = self.partition_leader[partition_id]
+            worker_info=self._master.worker_list[worker_id]
+        else:
+            worker_info = self._master.get_available_worker()
+            while worker_info is None:
+                gevent.sleep(0.5)
+                worker_info = self._master.get_available_worker()
+
+        unique_task_id = '{job_id}_{task_id}'.format(job_id=self.job_id,
+                                                     task_id=task.task_id)
+        self.task_node_table[unique_task_id] = worker_info
+
+        ret = self._master.assign_task(worker_info["worker_id"], task,
+                                       self.task_node_table)
+        if ret == 0:
+            self.task_list[task] = "Assigned"
+        debug_print("[StreamingDriver] Assigning Task {0}... Finished".format(
+            task.task_id), self._master.debug)
+        debug_print(
+            "[StreamingDriver] Task {0}.input_resource {1}".format(task.task_id,
+                                                               task.input_source),
+            self._master.debug)
+        return ret
+
+    def fault_handler(self, worker_id):
+        # Repick leader for partitions
+        for part_id in self.partition_infor[worker_id]:
+            if self.partition_leader[part_id] is worker_id:
+                for candidate_id in self.partition_infor.keys():
+                    if (candidate_id is not worker_id) and (part_id in self.partition_infor[candidate_id]):
+                        self.partition_leader[part_id] = candidate_id
+                        break
+        self.partition_infor.__delitem__(worker_id)
+
+        debug_print("[Worker] Worker {0} is down!".format(worker_id))
+        task_node_table_keys = filter(
+            lambda a: self.task_node_table[a]["worker_id"] == worker_id,
+            self.task_node_table.keys())
+        task_node_table_keys.sort(
+            lambda a, b: cmp(int(a.split('_')[1]), int(b.split('_')[1])))
+        task_list = []
+
+        for job_task_id in task_node_table_keys:
+            task_id = job_task_id.split('_', 1)[1]
+            for task_i in self.task_list.keys():
+                if task_i.task_id == task_id:
+                    task_list.append(task_i)
+                    break
+
+        gevent.spawn(self.assign_task_list, task_list)

@@ -1,3 +1,4 @@
+import gevent
 from src.rdd import partition
 from src.util.util_debug import debug_print
 from src.util.util_zerorpc import get_client, execute_command
@@ -57,6 +58,7 @@ class RDD(object):
                 result=None
                 #TODO Here May Return None
                 while result is None:
+                    gevent.sleep(0.5)
                     task_node_table=p["task_node_table"]
                     worker_address= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["address"]
                     client = get_client(worker_address)
@@ -70,15 +72,51 @@ class RDD(object):
         return results
 
 class InputRDD(RDD):
-    pass
+    def __init__(self, filename):
+        self.filename = filename
+        self.lineage = None
+        self.num_partitions = len(self.file_split_info.values())
+        self.num_rst_partitions = None
+
+    def get_lineage(self):
+        lineage = [(self, self.id)]
+        self.lineage = lineage
+        return lineage
+
+    def partitions(self):
+        partitions = []
+        index = self.lineage.index((self, self.id))
+        next_op = self.lineage[index + 1]
+        if isinstance(next_op[0], WideRDD):
+            for i in range(self.num_partitions):
+                sub = []
+                for j in range(next_op[0].num_partitions):
+                    self.num_rst_partitions = next_op[0].num_partitions
+                    sub.append(str(i) + '_' + str(j))
+                partitions.append(sub)
+        else:
+            for i in range(self.num_partitions):
+                partitions.append([str(i) + '_' + str(i)])
+        return partitions
 
 
 class Streaming(InputRDD):
 
+    def __init__(self, num_partitons):
+        self.id = "Streaming_{0}".format(Streaming._current_id)
+        Streaming._current_id += 1
+        self.lineage = None
+        # TODO, Hard to figure out how to get num_partitions
+        self.num_partitions = num_partitons
+        self.num_rst_partitions = None
+
     def get(self, input_source):
         job_id = input_source['job_id']
         partition_id = input_source['partition_id']
-        return input_source['streaming_data'][job_id][partition_id]
+        #self.data= input_source['streaming_data'][job_id][partition_id]
+        data = self.partition_intermediate_rst(input_source['streaming_data'][job_id][partition_id], self.num_rst_partitions)
+        return data
+
 
 
 class NarrowRDD(RDD):
@@ -194,33 +232,14 @@ class TextFile(InputRDD):
         self.num_partitions = len(self.file_split_info.values())
         self.num_rst_partitions = None
 
-    def get_lineage(self):
-        lineage = [(self, self.id)]
-        self.lineage = lineage
-        return lineage
 
-    def partitions(self):
-        partitions = []
-        index = self.lineage.index((self, self.id))
-        next_op = self.lineage[index + 1]
-        if isinstance(next_op[0], WideRDD):
-            for i in range(self.num_partitions):
-                sub = []
-                for j in range(next_op[0].num_partitions):
-                    self.num_rst_partitions = next_op[0].num_partitions
-                    sub.append(str(i) + '_' + str(j))
-                partitions.append(sub)
-        else:
-            for i in range(self.num_partitions):
-                partitions.append([str(i) + '_' + str(i)])
-        return partitions
 
     def get(self, input_source):
         debug_print("[TextFile-RDD] id={0} InputSource is {1}, data={2}".format(self.id, input_source, self.data))
         partition_id = input_source[0]["partition_id"]
         if not self.data:
             f = open(self.filename)
-            self.data = self.read_file(f, self.file_split_info[int(partition_id)])
+            self.data = self.read_file(f, self.file_split_info[partition_id])
             f.close()
         self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
         return self.data
