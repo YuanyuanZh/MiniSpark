@@ -33,7 +33,9 @@ if __name__ == '__main__':
     self_address = sys.argv[2]
     filepath = sys.argv[3]
 
-    word_count_client = LogQueryClient("../../logquery.txt")
+    word_count_client = LogQueryClient(filepath)
+
+    # word_count_client = LogQueryClient("../../files/logquery.txt")
     new_rdd = unpickle_object(pickle_object(word_count_client))
 
 

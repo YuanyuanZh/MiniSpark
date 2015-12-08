@@ -255,6 +255,7 @@ class Worker():
                 client = get_client(self.master_address)
                 debug_print("[Worker] Worker update task status: worker_id: %s at %s" % (
                     self.id, time.asctime(time.localtime(time.time()))), self.debug)
+                print("task status list: ", str(task_status_list))
                 ret = execute_command(client, client.updateWorkerStatus, self.id, task_status_list)
                 # ret = client.updateWorkerStatus(self.id, task_status_list)
                 if ret is not None:
