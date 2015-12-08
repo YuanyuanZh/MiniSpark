@@ -64,11 +64,11 @@ class StreamingWordCountClient(StreamingClient):
                        'split_size': 128,
                        "driver_addr": ""}
         RDD._streaming = 20
-        lines = rdd.TextFile(self.filename)
+        lines = rdd.Streaming(driver.num_partition)
         f = rdd.FlatMap(lines, lambda x: parse_lines(x))
         m = rdd.Map(f, lambda x: (x, 1))
         counts = rdd.ReduceByKey(m, lambda a, b: a + b)
-        # counts.collect(driver)
+        counts.collect(driver)
 
 
 if __name__ == '__main__':

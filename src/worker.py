@@ -166,6 +166,7 @@ class Worker():
         task=unpickle_object(serialized_task)
         for source in task.input_source:
             source['task_node_table'] = self.task_node_table
+            source['streaming_data']=self.streaming_data
         debug_print("[Worker] Received Task {0}".format(task.task_id), self.debug)
         # event = {
         #     'type' : 'Update',
