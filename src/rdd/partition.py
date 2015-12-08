@@ -1,3 +1,6 @@
+from src.util.util_debug import debug_print_by_name
+
+
 class HashPartition(object):
     def __init__(self, data, num_partitions):
         self.data = data
@@ -5,6 +8,7 @@ class HashPartition(object):
 
     def partition(self):
         rst = {}
+        debug_print_by_name('wentao', str(self.data))
         for i in range(len(self.data)):
             hashcode = self.hash_func(self.data[i][0])
             if hashcode in rst:

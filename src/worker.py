@@ -6,6 +6,7 @@ import pickle
 import sys
 import time
 from gevent.queue import Queue
+from src.rdd.rdd import NarrowRDD, Streaming
 from util.util_debug import *
 from util.util_enum import *
 from util.util_zerorpc import *
@@ -42,14 +43,14 @@ class Worker():
             return "127.0.0.1"
 
     def get_partition_infor(self, partition_infor, job_id, worker_list):
-        debug_print_by_name('wentao', str(partition_infor))
-        debug_print_by_name('wentao', str(worker_list))
         self.streaming_meta_data = partition_infor
         self.worker_list = worker_list
-        self.streaming_data[job_id] = {}
+        if job_id not in self.streaming_data.keys():
+            self.streaming_data[job_id] = {}
         for partition in partition_infor[self.id]:
-            self.streaming_data[job_id][partition] = []
-        debug_print_by_name('wentao', str(self.streaming_data))
+            if partition not in self.streaming_data[job_id].keys():
+                self.streaming_data[job_id][partition] = []
+        # debug_print_by_name('wentao', str(self.streaming_data))
 
     def find_worker_in_metadata(self, partition_id, metadata):
         worker = []
@@ -59,10 +60,10 @@ class Worker():
                 worker.append(worker_id)
         return worker
 
-    def replicate(self, job_id, partition, value):
+    def replicate(self, job_id, partition, value, timestamp):
         if job_id in self.streaming_data.keys():
-            self.streaming_data[job_id][partition].append(value)
-            print self.streaming_data
+            self.streaming_data[job_id][partition].append({'value': value, 'timestamp': timestamp})
+            #print self.streaming_data
 
 
 
@@ -75,7 +76,7 @@ class Worker():
         """
         job_id, value = message.split(",")
         job_id = int(job_id)
-        print message
+        #print message
         try:
             if job_id in self.streaming_data.keys():
                 p_id = None
@@ -85,14 +86,15 @@ class Worker():
                     if len(data) < length:
                         length = len(data)
                         p_id = partition_id
-                partitions[p_id].append(value)
+                timestamp = int(time.time())
+                partitions[p_id].append({'value': value, 'timestamp': timestamp})
                 #todo replica
                 worker_list = self.find_worker_in_metadata(p_id, self.streaming_meta_data)
                 debug_print_by_name('wentao', str(worker_list))
                 for worker_id in worker_list:
                     client = get_client(self.worker_list[worker_id]['address'], 1)
-                    execute_command(client, client.replicate, job_id, p_id, value)
-                print self.streaming_data
+                    execute_command(client, client.replicate, job_id, p_id, value, timestamp)
+                #print self.streaming_data
         except Exception:
             pass
         #self.streaming_data = {}
@@ -125,22 +127,28 @@ class Worker():
         debug_print(
             "[Worker]Start task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
             self.debug)
+        # try:
+        debug_print_by_name('wentao', str(task.input_source))
         result = task.last_rdd.get(task.input_source)
-        debug_print("[Worker] Result of Task {0} is generated:{1}".format(task.task_id, result),self.debug)
-        self.all_task_list[job_id][task_id] = {"status": Status.FINISH,
-                                               "data": result
-                                               }
+        # debug_print("[Worker] Result of Task {0} is generated:{1}".format(task.task_id, result),self.debug)
+        self.all_task_list[job_id][task_id] = {"status": Status.FINISH, "data": result}
         debug_print(
-            "[Worker]Finish task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
-            self.debug)
+        "[Worker]Finish task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
+        self.debug)
+        # except Exception:
+        #     print Exception.
+        #     debug_print("[Worker] Result of Task {0} is failed".format(task.task_id), self.debug)
+        #     self.all_task_list[job_id][task_id] = {"status": Status.FAIL, "data": None}
+
 
     def get_rdd_result(self, job_id, task_id, partition_id):
         data = None
         if self.all_task_list.has_key(job_id) and self.all_task_list[job_id].has_key(task_id):
             data = self.all_task_list[job_id][task_id]['data']
-            debug_print(
-            "[Worker]Get RDD result val {0} with job : {1} task: {2} partition: {3} at {4}".format(data, job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
-            self.debug)
+            # if data is not None:
+                # debug_print(
+                # "[Worker]Get RDD result val {0} with job : {1} task: {2} partition: {3} at {4}".format(data, job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
+                # self.debug)
             #print "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%data={0}, partition_id={1} isDict={2}".format(data, partition_id, isinstance(data, dict))
             if isinstance(data, dict):
                 if data.has_key(int(partition_id)):
@@ -155,18 +163,47 @@ class Worker():
             self.id = execute_command(client, client.registerWorker, self.worker_address)
             # self.id = client.registerWorker(self.worker_address)
             if self.id is not None:
-                debug_print("worker %d  %s registered at %s " % (
+                debug_print("[Worker] worker %d  %s registered at %s " % (
                 self.id, self.worker_address, time.asctime(time.localtime(time.time()))), self.debug)
                 break
             else:
                 gevent.sleep(2)
 
+    def filter_data(self, job_id, interval):
+        cur_time = time.time()
+        data = self.streaming_data[job_id]
+        for partition_id, partition_data in data.items():
+            #debug_print_by_name('kaijie', str(partition_data))
+            data[partition_id] = filter(lambda a: cur_time - a['timestamp'] < interval, partition_data)
 
-    def start_task(self, serialized_task,task_node_table):
+
+
+    def check_if_streaming(self, task):
+        rdd_iter = task.last_rdd
+        while True:
+            if not isinstance(rdd_iter, NarrowRDD):
+                return isinstance(rdd_iter, Streaming)
+            rdd_iter = rdd_iter.parent
+
+    def start_task(self, serialized_task, task_node_table):
         task=unpickle_object(serialized_task)
         for source in task.input_source:
             source['task_node_table'] = self.task_node_table
-            source['streaming_data']=self.streaming_data
+            if self.check_if_streaming(task):
+                # source['streaming_data'] = self.streaming_data
+                # debug_print_by_name('wentao', str(self.streaming_data))
+                # debug_print_by_name('wentao', str(task.input_source[0]))
+                self.filter_data(task.input_source[0]['job_id'], task.input_source[0]['interval'])
+                s_data = []
+                job_id = task.input_source[0]['job_id']
+                parition_id = task.input_source[0]['partition_id']
+                debug_print_by_name('wentao', str(self.streaming_data))
+                debug_print_by_name('wentao', str(job_id))
+                debug_print_by_name('wentao', str(parition_id))
+                for data in self.streaming_data[job_id][parition_id]:
+                    s_data.append(data['value'])
+                source['streaming_data'] = s_data
+
         debug_print("[Worker] Received Task {0}".format(task.task_id), self.debug)
         # event = {
         #     'type' : 'Update',
@@ -176,13 +213,14 @@ class Worker():
         self.task_queue.put(task)
         return 0
 
+
     def task_manager(self):
         while True:
             while not self.task_queue.empty():
                 task = self.task_queue.get()
-                print "Create thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
+                # debug_print("Create thread: %s at %s" % (0, time.asctime(time.localtime(time.time()))))
                 thread = gevent.spawn(self.runPartition, task)
-                debug_print("Task created: Key: {0} at {1}".format(
+                debug_print("[Worker] Task created: Key: {0} at {1}".format(
                     task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
             gevent.sleep(0)
 
@@ -198,7 +236,6 @@ class Worker():
             while not self.event_queue.empty():
                 task_node_table = self.event_queue.get()
                 #update task_node_table
-                print "********************************************************************"
                 self.task_node_table.update(task_node_table)
                 # for job_task_id, worker_info in  task_node_table :
                 #     self.task_node_table[job_task_id] = worker_info
@@ -216,7 +253,7 @@ class Worker():
                             task_status_list[job_id][task_id] = value['status']
 
                 client = get_client(self.master_address)
-                debug_print("[Worker]Worker update task status: worker_id: %s at %s" % (
+                debug_print("[Worker] Worker update task status: worker_id: %s at %s" % (
                     self.id, time.asctime(time.localtime(time.time()))), self.debug)
                 ret = execute_command(client, client.updateWorkerStatus, self.id, task_status_list)
                 # ret = client.updateWorkerStatus(self.id, task_status_list)
@@ -228,6 +265,7 @@ class Worker():
                             for task_id, value in task_list.items():
                                 if value['status'] == Status.FINISH:
                                     value['status'] = Status.FINISH_REPORTED
+            debug_print_by_name('kaijie', str(self.all_task_list))
             gevent.sleep(2)
 
     def run(self):

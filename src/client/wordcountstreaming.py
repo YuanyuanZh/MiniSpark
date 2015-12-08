@@ -41,10 +41,10 @@ def send_word(job_id, master_addr):
     while True:
         master = get_client(master_addr)
         worker_list = execute_command(master, master.get_worker_list)
-        debug_print_by_name('wentao', str(worker_list))
+        #debug_print_by_name('wentao', str(worker_list))
 
         for worker_id, worker in worker_list.items():
-            debug_print_by_name('wentao', str(worker))
+            #debug_print_by_name('wentao', str(worker))
             value = random.randint(1, 10)
             worker_data = get_worker_data(job_id, value)
             send_data(worker['address'], worker_data)
