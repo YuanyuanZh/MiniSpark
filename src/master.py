@@ -45,7 +45,7 @@ class Master():
             'worker_address': worker_address
         }
         self.reportEvent(Event.REGISTER, event_object)
-        debug_print("Report Worker %s %s registration at %s" % (
+        debug_print("[Master] Report Worker %s %s registration at %s" % (
             worker_id, worker_address, time.asctime(time.localtime(time.time()))), self.debug)
         # wait for
         self.worker_event_list[worker_id].get()
@@ -64,22 +64,28 @@ class Master():
             'num_slots': 5
         }
         self.worker_list[worker_id] = worker
-        debug_print("Process worker %s %s registered at %s" % (
+        debug_print("[Master] Process worker %s %s registered at %s" % (
             worker['worker_id'], worker['address'], time.asctime(time.localtime(time.time()))), self.debug)
         self.worker_event_list[worker_id].set()
 
-    def get_available_worker(self):
-        """
-        Return worker which has free slots on it. It is called by driver.
-        :return:
-        """
-        candidate_worker = None
-        max_slot = 0
-        for worker_id, worker in self.worker_list.items():
-            if worker['num_slots'] > max_slot:
-                max_slot = worker['num_slots']
-                candidate_worker = worker
-        return candidate_worker
+    def get_available_worker(self, worker_id=-1):
+        debug_print_by_name('kaijie', str(self.worker_list))
+        debug_print_by_name('kaijie', str(self.worker_list))
+        if worker_id == -1:
+            candidate_worker = None
+            max_slot = 0
+            for worker_id, worker in self.worker_list.items():
+                if worker['num_slots'] > max_slot:
+                    max_slot = worker['num_slots']
+                    candidate_worker = worker
+            if candidate_worker == None:
+                debug_print_by_name('kaijie', 'No available worker not streaming')
+            return candidate_worker
+        else:
+            if self.worker_list[worker_id]['num_slots'] > 0:
+                return self.worker_list[worker_id]
+            debug_print_by_name('kaijie', 'No available worker streaming')
+            return None
 
     def get_worker_list(self):
         """
@@ -189,7 +195,7 @@ class Master():
                         # for job_id in self.driver_list.keys():
                         #     self.driver_list[job_id][0].fault_handler(worker_id)
                         # # self.reportEvent(Event.WORKER_DOWN, worker_id)
-                        debug_print("Report Worker Down: worker_id: %s at %s" % (
+                        debug_print("[Master] Report Worker Down: worker_id: %s at %s" % (
                             worker_id, time.asctime(time.localtime(time.time()))), self.debug)
                         # print "Find worker down: worker_id: %s, ip: %s at %s" % (
                         #     workerStatus.worker_id, workerStatus.worker_address,
@@ -224,7 +230,7 @@ class Master():
                 for job_id in self.driver_list.keys():
                     self.driver_list[job_id][0].fault_handler(worker_id)
                     # self.reportEvent(Event.WORKER_DOWN, worker_id)
-                    debug_print("Process Worker Down: worker_id: %s at %s" % (
+                    debug_print("[Master] Process Worker Down: worker_id: %s at %s" % (
                         worker_id, time.asctime(time.localtime(time.time()))), self.debug)
 
     def finish_task_execute(self, job_id, task_id, worker_id):
@@ -240,7 +246,7 @@ class Master():
             if driver is not None:
                 driver.finish_task(task_id)
                 # self.reportEvent(Event.FINISH_TASK, key)
-                debug_print("Process Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
+                debug_print("[Master] Process Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
                     worker_id, job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
 
     def event_handler(self):
@@ -308,8 +314,10 @@ class Master():
                     # if driver is not None:
                     #     driver.finish_task(task_id)
                     #     # self.reportEvent(Event.FINISH_TASK, key)
-                    debug_print("Report Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
+                    debug_print("[Master] Report Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
                         worker_id, job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
+                elif status == Status.FAIL:
+                    debug_print_by_name('Kaijie', 'Program fail')
         return 0
 
     def find_driver(self, job_id):
@@ -356,7 +364,7 @@ class Master():
         job_id = self.job_id
         self.job_list[job_id] = unpickle_object(job)
         if isinstance(self.job_list[job_id], StreamingClient):
-            driver = StreamingDriver(job_id)
+            driver = StreamingDriver(job_id, self.job_list[job_id].interval)
             gevent.spawn(self.run_loop_job, job_id, driver)
         else:
             driver = SparkDriver(job_id)
@@ -392,8 +400,8 @@ class Master():
 
     def ship_streaming_meta_data(self, job_id, streaming_metadata_table):
         for worker_id, worker in self.worker_list.items():
-            client = get_client(worker['address'])
-            client.get_partition_infor(streaming_metadata_table, job_id, self.worker_list)
+            client = get_client(worker['address'], 1)
+            execute_command(client, client.get_partition_infor, streaming_metadata_table, job_id, self.worker_list)
 
 if __name__ == '__main__':
     status = Worker_Status.UP
