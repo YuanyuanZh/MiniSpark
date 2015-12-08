@@ -130,7 +130,7 @@ class Worker():
         # try:
         debug_print_by_name('wentao', str(task.input_source))
         result = task.last_rdd.get(task.input_source)
-        debug_print("[Worker] Result of Task {0} is generated:{1}".format(task.task_id, result),self.debug)
+        # debug_print("[Worker] Result of Task {0} is generated:{1}".format(task.task_id, result),self.debug)
         self.all_task_list[job_id][task_id] = {"status": Status.FINISH, "data": result}
         debug_print(
         "[Worker]Finish task with job : %s task: %s at %s" % (job_id, task_id, time.asctime(time.localtime(time.time()))),
@@ -145,10 +145,10 @@ class Worker():
         data = None
         if self.all_task_list.has_key(job_id) and self.all_task_list[job_id].has_key(task_id):
             data = self.all_task_list[job_id][task_id]['data']
-            if data is not None:
-                debug_print(
-                "[Worker]Get RDD result val {0} with job : {1} task: {2} partition: {3} at {4}".format(data, job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
-                self.debug)
+            # if data is not None:
+                # debug_print(
+                # "[Worker]Get RDD result val {0} with job : {1} task: {2} partition: {3} at {4}".format(data, job_id, task_id, partition_id, time.asctime(time.localtime(time.time()))),
+                # self.debug)
             #print "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%data={0}, partition_id={1} isDict={2}".format(data, partition_id, isinstance(data, dict))
             if isinstance(data, dict):
                 if data.has_key(int(partition_id)):
@@ -163,7 +163,7 @@ class Worker():
             self.id = execute_command(client, client.registerWorker, self.worker_address)
             # self.id = client.registerWorker(self.worker_address)
             if self.id is not None:
-                debug_print("worker %d  %s registered at %s " % (
+                debug_print("[Worker] worker %d  %s registered at %s " % (
                 self.id, self.worker_address, time.asctime(time.localtime(time.time()))), self.debug)
                 break
             else:
@@ -212,9 +212,9 @@ class Worker():
         while True:
             while not self.task_queue.empty():
                 task = self.task_queue.get()
-                print "Create thread: %s at %s" % (0, time.asctime(time.localtime(time.time())))
+                # debug_print("Create thread: %s at %s" % (0, time.asctime(time.localtime(time.time()))))
                 thread = gevent.spawn(self.runPartition, task)
-                debug_print("Task created: Key: {0} at {1}".format(
+                debug_print("[Worker] Task created: Key: {0} at {1}".format(
                     task.task_id, time.asctime(time.localtime(time.time()))), self.debug)
             gevent.sleep(0)
 
@@ -230,7 +230,6 @@ class Worker():
             while not self.event_queue.empty():
                 task_node_table = self.event_queue.get()
                 #update task_node_table
-                print "********************************************************************"
                 self.task_node_table.update(task_node_table)
                 # for job_task_id, worker_info in  task_node_table :
                 #     self.task_node_table[job_task_id] = worker_info
@@ -248,7 +247,7 @@ class Worker():
                             task_status_list[job_id][task_id] = value['status']
 
                 client = get_client(self.master_address)
-                debug_print("[Worker]Worker update task status: worker_id: %s at %s" % (
+                debug_print("[Worker] Worker update task status: worker_id: %s at %s" % (
                     self.id, time.asctime(time.localtime(time.time()))), self.debug)
                 ret = execute_command(client, client.updateWorkerStatus, self.id, task_status_list)
                 # ret = client.updateWorkerStatus(self.id, task_status_list)

@@ -51,7 +51,7 @@ class RDD(object):
         results = []
         #debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
         for source in input_source:
-            debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, source))
+            # debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, source))
             if not isinstance(source, list):
                 source=[source]
             for p in source:
@@ -67,7 +67,7 @@ class RDD(object):
                                           p['job_id'],
                                           p['task_id'],
                                           p['partition_id'])
-                debug_print("[Shuffle] {0} get a result={1} from {2}, at Part {3}".format(self.id, result,  p['task_id'],p['partition_id']))
+                # debug_print("[Shuffle] {0} get a result={1} from {2}, at Part {3}".format(self.id, result,  p['task_id'],p['partition_id']))
                 results += result
         return results
 
@@ -205,7 +205,7 @@ class WideRDD(RDD):
         results = []
         #debug_print("[Wide-RDD] {0} InputSource is {1}".format(self.id, input_source))
         for source in input_source:
-            debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, source))
+            # debug_print("[Shuffle] {0} Shuffling from source {1}".format(self.id, source))
             if not isinstance(source, list):
                 source=[source]
             for p in source:
@@ -214,12 +214,12 @@ class WideRDD(RDD):
                     task_node_table=p["task_node_table"]
                     worker_address= task_node_table["{0}_{1}".format(p['job_id'],p['task_id'])]["address"]
                     client = get_client(worker_address)
-                    debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
+                    # debug_print("[Shuffle] {0} get a None from {1}, at Part {2}, retrying".format(self.id, p['task_id'],p['partition_id']))
                     result=execute_command(client, client.get_rdd_result,
                                           p['job_id'],
                                           p['task_id'],
                                           p['partition_id'])
-                debug_print("[Shuffle] {0} get a result={1} from {2}, at Part {3}".format(self.id, result,  p['task_id'],p['partition_id']))
+                # debug_print("[Shuffle] {0} get a result={1} from {2}, at Part {3}".format(self.id, result,  p['task_id'],p['partition_id']))
                 results += result
         return results
 
@@ -238,7 +238,7 @@ class TextFile(InputRDD):
 
 
     def get(self, input_source):
-        debug_print("[TextFile-RDD] id={0} InputSource is {1}, data={2}".format(self.id, input_source, self.data))
+        # debug_print("[TextFile-RDD] id={0} InputSource is {1}, data={2}".format(self.id, input_source, self.data))
         partition_id = input_source[0]["partition_id"]
         if not self.data:
             f = open(self.filename)
@@ -278,7 +278,7 @@ class Map(NarrowRDD):
         self.lineage = None
 
     def get(self, input_source):
-        debug_print("[Map-RDD] InputSource is {0}".format(input_source))
+        # debug_print("[Map-RDD] InputSource is {0}".format(input_source))
 
         if not self.data:
             element = self.parent.get(input_source)
@@ -306,7 +306,7 @@ class Filter(NarrowRDD):
         self.lineage = None
 
     def get(self, input_source):
-        debug_print("[Filter-RDD] InputSource is {0}".format(input_source))
+        # debug_print("[Filter-RDD] InputSource is {0}".format(input_source))
 
         if not self.data:
             elements = self.parent.get(input_source)
@@ -334,7 +334,7 @@ class FlatMap(NarrowRDD):
         self.lineage = None
 
     def get(self, input_source):
-        debug_print("[FlatMap-RDD] InputSource is {0}".format(input_source))
+        # debug_print("[FlatMap-RDD] InputSource is {0}".format(input_source))
         if not self.data:
             element = self.parent.get(input_source)
             if element == None:
@@ -346,7 +346,7 @@ class FlatMap(NarrowRDD):
                     new_element += rst
                 self.data = new_element
         self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
-        debug_print("[FlatMap-RDD] {0} has destnation# {1}, now data is {2}".format(self.id, self.num_rst_partitions,self.data))
+        # debug_print("[FlatMap-RDD] {0} has destnation# {1}, now data is {2}".format(self.id, self.num_rst_partitions,self.data))
         return self.data
 
 
@@ -369,7 +369,7 @@ class Join(MultiParentNarrowRDD):
         return lineage
 
     def get(self, input_source):
-        debug_print("[Join-RDD] {0} has Parnets {1}".format(self.id, map(lambda x: x.id, self.parent)))
+        # debug_print("[Join-RDD] {0} has Parnets {1}".format(self.id, map(lambda x: x.id, self.parent)))
         if not self.data:
             result={}
             self.data=[]
@@ -396,7 +396,7 @@ class Join(MultiParentNarrowRDD):
             #         rst.append((element1[i][0], (element1[i][1], element2[i][1])))
             #     self.data = rst
         self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
-        debug_print("[Join-RDD] id: {0} self.input_source={1} self.data={2}".format(self.id, input_source, self.data))
+        # debug_print("[Join-RDD] id: {0} self.input_source={1} self.data={2}".format(self.id, input_source, self.data))
         return self.data
 
     def partitions(self):
@@ -434,7 +434,7 @@ class MapValue(NarrowRDD):
             if element == None:
                 return None
             else:
-                debug_print("[MapValue-RDD] id={0} input_source={1}, element={2}".format(self.id, input_source, element))
+                # debug_print("[MapValue-RDD] id={0} input_source={1}, element={2}".format(self.id, input_source, element))
                 rst = []
                 for e in element:
                     rst.append((e[0], self.func(e[1])))
@@ -455,7 +455,7 @@ class GroupByKey(WideRDD):
 
     def get(self, input_source):
         if not self.data:
-            debug_print("[GroupByKey-RDD]id={0} Data is {1}, need to generate ".format(self.id, self.data))
+            # debug_print("[GroupByKey-RDD]id={0} Data is {1}, need to generate ".format(self.id, self.data))
 
             # element = self.parent.get(input_source)
             element = self.shuffle(input_source)
@@ -463,7 +463,7 @@ class GroupByKey(WideRDD):
                 return None
             else:
                 element_new = {}
-                debug_print("[GroupByKey-RDD]id={0} input_source={1}, element={2} parents={3}".format(self.id, input_source, element, self.parent.id))
+                # debug_print("[GroupByKey-RDD]id={0} input_source={1}, element={2} parents={3}".format(self.id, input_source, element, self.parent.id))
                 for e in element:
                     k = e[0]
                     v = e[1]
@@ -476,7 +476,7 @@ class GroupByKey(WideRDD):
                     rst.append((key, element_new.get(key)))
                 self.data = rst
             self.data = self.partition_intermediate_rst(self.data, self.num_rst_partitions)
-        debug_print("[GroupByKey-RDD] id: {0} self.data={1}".format(self.id, self.data))
+        # debug_print("[GroupByKey-RDD] id: {0} self.data={1}".format(self.id, self.data))
         return self.data
 
 
@@ -499,7 +499,7 @@ class ReduceByKey(WideRDD):
             if element == None:
                 return None
             else:
-                debug_print("[ReduceByKey-RDD]id={0} input_source={1}, element={2}".format(self.id, input_source, element))
+                # debug_print("[ReduceByKey-RDD]id={0} input_source={1}, element={2}".format(self.id, input_source, element))
                 for e in element:
                     if e[0] in collect:
                         collect[e[0]].append(e[1])

@@ -45,7 +45,7 @@ class Master():
             'worker_address': worker_address
         }
         self.reportEvent(Event.REGISTER, event_object)
-        debug_print("Report Worker %s %s registration at %s" % (
+        debug_print("[Master] Report Worker %s %s registration at %s" % (
             worker_id, worker_address, time.asctime(time.localtime(time.time()))), self.debug)
         # wait for
         self.worker_event_list[worker_id].get()
@@ -64,7 +64,7 @@ class Master():
             'num_slots': 5
         }
         self.worker_list[worker_id] = worker
-        debug_print("Process worker %s %s registered at %s" % (
+        debug_print("[Master] Process worker %s %s registered at %s" % (
             worker['worker_id'], worker['address'], time.asctime(time.localtime(time.time()))), self.debug)
         self.worker_event_list[worker_id].set()
 
@@ -195,7 +195,7 @@ class Master():
                         # for job_id in self.driver_list.keys():
                         #     self.driver_list[job_id][0].fault_handler(worker_id)
                         # # self.reportEvent(Event.WORKER_DOWN, worker_id)
-                        debug_print("Report Worker Down: worker_id: %s at %s" % (
+                        debug_print("[Master] Report Worker Down: worker_id: %s at %s" % (
                             worker_id, time.asctime(time.localtime(time.time()))), self.debug)
                         # print "Find worker down: worker_id: %s, ip: %s at %s" % (
                         #     workerStatus.worker_id, workerStatus.worker_address,
@@ -230,7 +230,7 @@ class Master():
                 for job_id in self.driver_list.keys():
                     self.driver_list[job_id][0].fault_handler(worker_id)
                     # self.reportEvent(Event.WORKER_DOWN, worker_id)
-                    debug_print("Process Worker Down: worker_id: %s at %s" % (
+                    debug_print("[Master] Process Worker Down: worker_id: %s at %s" % (
                         worker_id, time.asctime(time.localtime(time.time()))), self.debug)
 
     def finish_task_execute(self, job_id, task_id, worker_id):
@@ -246,7 +246,7 @@ class Master():
             if driver is not None:
                 driver.finish_task(task_id)
                 # self.reportEvent(Event.FINISH_TASK, key)
-                debug_print("Process Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
+                debug_print("[Master] Process Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
                     worker_id, job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
 
     def event_handler(self):
@@ -314,7 +314,7 @@ class Master():
                     # if driver is not None:
                     #     driver.finish_task(task_id)
                     #     # self.reportEvent(Event.FINISH_TASK, key)
-                    debug_print("Report Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
+                    debug_print("[Master] Report Task Finish: worker_id: %s job_id %s task_id: %s at %s" % (
                         worker_id, job_id, task_id, time.asctime(time.localtime(time.time()))), self.debug)
                 elif status == Status.FAIL:
                     debug_print_by_name('Kaijie', 'Program fail')

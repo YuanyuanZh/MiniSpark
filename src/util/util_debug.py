@@ -41,7 +41,7 @@ def debug_print(message, debug=True):
     """
     if debug: print message
 
-def debug_print_by_name(name, message, debug=True):
+def debug_print_by_name(name, message, debug=False):
     if name == 'wentao':
         if debug:
             print bcolors.FAIL + 'Wentao Wentao Wentao Wentao Wentao Wentao Wentao' + bcolors.ENDC
@@ -50,3 +50,6 @@ def debug_print_by_name(name, message, debug=True):
         if debug:
             print bcolors.OKBLUE + 'kaijie kaijie kaijie kaijie kaijie kaijie kaijie' + bcolors.ENDC
             debug_print(bcolors.OKBLUE + message + bcolors.ENDC)
+
+def print_infor(color, message, debug=False):
+    if debug: print(color + message + bcolors.ENDC)
